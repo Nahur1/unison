@@ -8,6 +8,9 @@ use std::time::Duration;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GITHUB_URL: &str = "https://github.com/Nahur1/unison";
+/// The authors' GitHub profiles, shown in About.
+pub const REZA_URL: &str = "https://github.com/reza-hashemian";
+pub const NAHUR1_URL: &str = "https://github.com/Nahur1";
 pub const RELEASES_URL: &str = "https://github.com/Nahur1/unison/releases/latest";
 
 /// An installer to run once the event loop has ended: (file, open Unison again).

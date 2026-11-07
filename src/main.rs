@@ -2256,6 +2256,8 @@ fn run() -> anyhow::Result<()> {
     });
     ui.on_open_page(|page| {
         community::open_url(match page.as_str() {
+            "reza" => community::REZA_URL,
+            "nahur1" => community::NAHUR1_URL,
             "releases" => community::RELEASES_URL,
             _ => community::GITHUB_URL,
         });
