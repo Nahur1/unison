@@ -31,3 +31,10 @@ class MacPackagingTests(unittest.TestCase):
              patch.object(packager, "command") as command:
             packager.deduplicate_rpaths("binary")
             command.assert_not_called()
+
+
+class DebianDependencyTests(unittest.TestCase):
+    def test_either_libmpv_soname_satisfies_the_package(self):
+        deps = packager.debian_dependencies("shlibs:Depends=libc6 (>= 2.34), libmpv1 (>= 0.29), libssl3\n")
+        self.assertEqual(deps, "libc6 (>= 2.34), libssl3, libmpv2 | libmpv1")
+        self.assertEqual(packager.debian_dependencies("shlibs:Depends=libc6 (>= 2.34)"), "libc6 (>= 2.34), libmpv2 | libmpv1")
