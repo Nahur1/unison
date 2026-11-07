@@ -25,7 +25,7 @@
 - Hooks must allow real collaborators. Do not reinstate an owner-only author filter across the shared history.
 - Increment Cargo.toml and Cargo.lock version and add docs/releases/X.Y.Z.md for app updates. Push explicit refs to Nahur1/unison; never use --mirror or push unrelated backup refs.
 - Required Actions jobs: Windows x64, Linux amd64, macOS arm64 and Intel. Require unit/publishing/model-inference/native playback and full process-exit checks before publishing.
-- Wait for publish success and verify actual public downloads/checksums before reporting a version released. Do not substitute a local binary for CI output.
+- After appropriate local checks and pushing the change/PR, stop without waiting or polling for GitHub Actions builds or publication. The owner checks Actions independently to conserve usage. Report pushed/queued accurately; do not claim a successful release unless it was actually verified or explicitly requested. Do not substitute a local binary for CI output.
 - Existing ownership/license terms and legacy MIT/dependency notices remain intact. Never infer a transfer of third-party ownership from collaborator access.
 - Source provenance and archived prior release notes are documented in docs/PROJECT_IMPORT.md. External dependency source names are not current product names.
 
