@@ -1,6 +1,9 @@
 Read and follow AGENTS.md for the accepted application baseline and project rules.
 
-The owner requests commits under the repository-local Nahur1 identity only.
-Do not add AI Co-Authored-By trailers or change the author/committer to an
-AI identity. Preserve dependency license and copyright notices; follow the
-owner-confirmed original-player attribution exception recorded in AGENTS.md.
+On the owner's computer use the repository-local Nahur1 identity. Other real
+collaborators use their own Git names and emails; do not rewrite their work as
+the owner's. Do not add AI author or AI Co-Authored-By identities. Preserve
+dependency license and copyright notices and follow AGENTS.md.
+
+The repository, project and command are unison. Only the application display
+name is Unison Player. The active workspace is D:\Unison.
