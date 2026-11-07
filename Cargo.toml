@@ -30,6 +30,7 @@ trash = "5.2.9"
 # Global shortcuts: our own event-driven X11 grab on Linux, global-hotkey elsewhere.
 # Media keys too: our own MPRIS service on Linux, souvlaki on macOS/Windows.
 [target.'cfg(target_os = "linux")'.dependencies]
+libloading = "0.8"
 x11-dl = "2.21"
 zbus = "5.19"
 
