@@ -8,8 +8,7 @@ use std::time::Duration;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const GITHUB_URL: &str = "https://github.com/Nahur1/unison";
-pub const RELEASES_URL: &str = "https://github.com/Nahur1/unison/releases";
-pub const TELEGRAM_URL: &str = GITHUB_URL;
+pub const RELEASES_URL: &str = "https://github.com/Nahur1/unison/releases/latest";
 
 /// An installer to run once the event loop has ended: (file, open Unison again).
 pub static INSTALL_ON_EXIT: Mutex<Option<(PathBuf, bool)>> = Mutex::new(None);
@@ -31,10 +30,6 @@ impl Player {
     pub(crate) fn start_community(&mut self, _relaunched: bool) {
         let ui = self.ui();
         ui.set_app_version(VERSION.into());
-        if !updater::installed() {
-            ui.set_update_status("portable".into());
-            return;
-        }
         if let Some((version, file)) = updater::pending() {
             self.update_ready(version, file);
         }
@@ -49,7 +44,7 @@ impl Player {
         if manual {
             self.ui().set_show_update_sheet(true);
         }
-        if !updater::installed() || self.update_checking || self.update_file.is_some() {
+        if self.update_checking || self.update_file.is_some() {
             return;
         }
         self.update_checking = true;
@@ -63,6 +58,7 @@ impl Player {
                     p.update_checking = false;
                     match result {
                         Ok(updater::Found::Ready(version, file)) => p.update_ready(version, file),
+                        Ok(updater::Found::Available(version)) => p.update_available(version),
                         Ok(updater::Found::Latest) => p.ui().set_update_status("latest".into()),
                         Err(e) => {
                             eprintln!("unison: update check: {e:#}");
@@ -85,6 +81,17 @@ impl Player {
         }
     }
 
+    /// A newer version to download by hand (Linux, macOS, portable Windows).
+    fn update_available(&mut self, version: String) {
+        let ui = self.ui();
+        let first = ui.get_update_latest() != version.as_str();
+        ui.set_update_latest(version.clone().into());
+        ui.set_update_status("available".into());
+        if first {
+            self.show_note(format!("Unison {version} is available · download it from Releases"));
+        }
+    }
+
     /// "Restart and update" in the About sheet.
     pub(crate) fn install_update_now(&mut self) {
         if let Some(file) = self.update_file.clone() {
@@ -99,9 +106,5 @@ impl Player {
         let Some(file) = self.update_file.clone() else { return false };
         *INSTALL_ON_EXIT.lock().unwrap() = Some((file, false));
         true
-    }
-
-    pub(crate) fn community_closed(&mut self, _how: &str) {
-        self.ui().set_show_community(false);
     }
 }

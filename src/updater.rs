@@ -1,7 +1,8 @@
 //! Automatic updates for the installed app. New versions are published as
 //! GitHub Releases with a small `latest.json`; the new installer is downloaded
 //! and checksum-verified in the background, then installed silently when
-//! Unison closes (or right away, with "Restart and update").
+//! Unison closes (or right away, with "Restart and update"). Other copies
+//! (Linux, macOS, portable Windows) only learn that a new version exists.
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -19,6 +20,8 @@ pub struct Manifest {
 
 pub enum Found {
     Latest,
+    /// Newer, but this copy can't install it itself: download from Releases.
+    Available(String),
     Ready(String, PathBuf),
 }
 
@@ -66,6 +69,9 @@ pub fn check(cancel: &AtomicBool) -> Result<Found> {
     let m: Manifest = client.get(MANIFEST).send()?.error_for_status()?.json().context("Invalid update information")?;
     if !newer(&m.version, crate::community::VERSION) {
         return Ok(Found::Latest);
+    }
+    if !installed() {
+        return Ok(Found::Available(m.version));
     }
     ensure!(
         m.url.starts_with(&format!("https://github.com/{REPO}/releases/download/")) && m.sha256.len() == 64,
