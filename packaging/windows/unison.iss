@@ -13,13 +13,13 @@
 AppId={{13A77F89-D5AC-4ECC-A660-FE6C31B12D79}
 AppName=Unison Player
 AppVersion={#AppVersion}
-AppPublisher=Mohammad Fakhari (Nahur1)
+AppPublisher=Reza Hashemian and Mohammad Fakhari (Nahur1)
 AppPublisherURL=https://github.com/Nahur1/unison
 AppUpdatesURL=https://github.com/Nahur1/unison/releases
 AppVerName=Unison Player {#AppVersion}
 VersionInfoVersion={#AppVersion}
-VersionInfoCompany=Mohammad Fakhari (Nahur1)
-AppCopyright=Copyright (c) 2026 Mohammad Fakhari (Nahur1). See LICENSE for scope.
+VersionInfoCompany=Reza Hashemian and Mohammad Fakhari (Nahur1)
+AppCopyright=Copyright (c) 2026 Reza Hashemian and Mohammad Fakhari (Nahur1). See LICENSE for scope.
 LicenseFile=..\..\LICENSE
 DefaultDirName={autopf}\Unison
 DefaultGroupName=Unison

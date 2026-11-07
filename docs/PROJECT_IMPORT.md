@@ -3,7 +3,9 @@
 Unison starts from the complete working source tree of
 `https://github.com/Nahur1/kaghaz-player` at commit
 `2ee7aa36e06fae8f6d409b686a7ce906e3bcd57a` (version 0.3.6), including the
-owner's current notices and the newly selected U/play brand artwork.
+owner's current notices and the newly selected U/play brand artwork. That
+tree itself began as Nava (https://github.com/reza-hashemian/nava), the player
+written by Reza Hashemian.
 
 The original project and its Git history remain intact. This repository has a
 fresh import history for the new shared project. Historical release notes and

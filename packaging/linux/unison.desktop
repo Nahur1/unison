@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Unison Player
-X-Unison-Maintainer=Mohammad Fakhari (Nahur1)
+X-Unison-Maintainer=Reza Hashemian and Mohammad Fakhari (Nahur1)
 GenericName=Music Player
 Comment=A calm, glassy music and video player
 Exec=unison %U
