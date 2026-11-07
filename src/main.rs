@@ -8,6 +8,7 @@ mod eq;
 mod ipc;
 mod library;
 mod lyrics;
+mod libmpv;
 mod meta;
 mod mpv;
 #[cfg(target_os = "linux")]
