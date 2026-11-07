@@ -1,5 +1,6 @@
 MIT License
 
+Copyright (c) 2026 Reza Hashemian (Nava, the original player)
 Copyright (c) 2026 Nahur1 (Kaghaz Player contributions)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
