@@ -155,9 +155,12 @@ jobs:
             dist/*.deb
             dist/*.dmg
             dist/*.sha256
+  mobile:
+    uses: ./.github/workflows/mobile.yml
+    secrets: inherit
   publish:
     if: github.repository == 'Nahur1/unison' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    needs: [windows, unix]
+    needs: [windows, unix, mobile]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -172,4 +175,18 @@ jobs:
       - name: Verify and publish new version
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/publish-release.py --artifact-dir release-assets --commit "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY" --cross-platform
+        run: python3 scripts/publish-release.py --artifact-dir release-assets --commit "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY" --cross-platform --mobile
+  deploy-pwa:
+    if: github.repository == 'Nahur1/unison' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [publish, mobile]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy tested installable PWA
+        id: deployment
+        uses: actions/deploy-pages@v4

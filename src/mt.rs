@@ -383,9 +383,17 @@ struct Hyp {
 impl Model {
     pub fn load(dir: &Path) -> Result<Self> {
         let read = |name: &str| std::fs::read(dir.join(name)).with_context(|| format!("Cannot read {name}"));
-        let vocab = Spm::load(&read(VOCAB_FILE)?)?;
         let bytes = read(MODEL_FILE)?;
-        let t = Tensors::parse(&bytes)?;
+        let vocabulary = read(VOCAB_FILE)?;
+        let shortlist = std::fs::read(dir.join(LEX_FILE)).ok();
+        Self::from_bytes(&bytes, &vocabulary, shortlist.as_deref())
+    }
+
+    /// Shared in-memory loader for the mobile/WebAssembly worker. The model,
+    /// tokenizer and inference algorithm are identical to the desktop player.
+    pub fn from_bytes(bytes: &[u8], vocabulary: &[u8], shortlist: Option<&[u8]>) -> Result<Self> {
+        let vocab = Spm::load(vocabulary)?;
+        let t = Tensors::parse(bytes)?;
         let (emb, n_vocab, dim) = t.get("Wemb")?;
         ensure!(n_vocab == vocab.len(), "The vocabulary does not match the translation model");
         ensure!(dim % 8 == 0 && dim >= 64, "Unexpected translation model width");
@@ -414,10 +422,7 @@ impl Model {
             });
         }
         ensure!(!encoder.is_empty() && !decoder.is_empty(), "This is not a supported Marian translation model");
-        let shortlist = match std::fs::read(dir.join(LEX_FILE)) {
-            Ok(b) => Some(parse_shortlist(&b, n_vocab)?),
-            Err(_) => None,
-        };
+        let shortlist = shortlist.map(|b| parse_shortlist(b, n_vocab)).transpose()?;
         Ok(Model { vocab, shortlist, emb, out_b, encoder, decoder, dim, heads: 8, beam: 4 })
     }
 

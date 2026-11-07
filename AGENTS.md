@@ -45,3 +45,25 @@ metadata alone is not proof of a person's identity.
 
 Reza: `git config user.email "63972210+reza-hashemian@users.noreply.github.com"`
 Owner: `git config user.email "51950495+Nahur1@users.noreply.github.com"`
+
+## Mobile development
+
+- Shared mobile source is mobile/. Preserve the selected logo, fonts and visual
+  identity while adapting controls to touch/safe areas; do not redesign desktop.
+- Reuse src/mt.rs and src/spm.rs through the standalone WebAssembly crate. Never
+  substitute fake translations or a silent online fallback. Verify actual model
+  inference, subtitle persistence and offline restart.
+- Android music MUST continue with screen lock and MUST stop when the task is
+  removed or Stop and Close is tapped. Native foreground Media3 service owns
+  music queue/timer; do not rely on background WebView timers for music.
+- Keep media private/offline. Avoid base64 media and unbounded file reads at
+  import. Android uses scoped document imports; PWA stores bounded IDB chunks.
+- Stable Android signing key is ignored under .tools/signing; GitHub encrypted
+  secrets sign main builds. Never commit, print, replace or publish the key.
+- Mobile CI and desktop native jobs gate release together. Test Safari media
+  through macOS WebKit CI; Windows WebKit media skips are documented, not passes.
+- Actual phone acceptance has not been performed locally. Keep docs/MOBILE.md
+  honest about preview limitations and desktop/browser differences. Never claim
+  full libmpv or device parity from browser emulation or compilation alone.
+- Owner explicitly requests stopping after local checks and push/PR creation;
+  do not wait/poll Actions builds, deployment or release unless asked to inspect.

@@ -1,0 +1,170 @@
+name: Unison mobile builds
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mobile/translator -> target
+      - run: python3 scripts/prepare-offline.py
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run prepare:assets && npm run build:translator && npm test && npm run build
+        working-directory: mobile
+      - run: npx playwright install --with-deps chromium
+        working-directory: mobile
+      - run: npm run test:e2e -- --project=android-chromium
+        working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unison-mobile-chromium-tests
+          path: mobile/test-results
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unison-pwa-build
+          path: mobile/dist
+          if-no-files-found: error
+      - name: Package installable PWA
+        run: |
+          version=$(node -p "require('./mobile/package.json').version")
+          mkdir -p mobile-release
+          (cd mobile/dist && zip -qr "../../mobile-release/unison-${version}-pwa.zip" .)
+          (cd mobile-release && sha256sum *.zip > "unison-${version}-pwa.zip.sha256")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unison-release-pwa
+          path: mobile-release/*
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: mobile/dist
+  safari:
+    needs: web
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - uses: actions/download-artifact@v4
+        with:
+          name: unison-pwa-build
+          path: mobile/dist
+      - run: npx playwright install webkit
+        working-directory: mobile
+      - run: npm run test:e2e -- --project=iphone-webkit
+        working-directory: mobile
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unison-mobile-webkit-tests
+          path: mobile/test-results
+          retention-days: 7
+  android:
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+        working-directory: mobile
+      - uses: actions/download-artifact@v4
+        with:
+          name: unison-pwa-build
+          path: mobile/dist
+      - run: npx cap sync android
+        working-directory: mobile
+      - run: chmod +x mobile/android/gradlew
+      - run: ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest --console=plain
+        working-directory: mobile/android
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: cd mobile/android && ./gradlew :app:connectedDebugAndroidTest --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unison-android-test-reports
+          path: mobile/android/app/build/reports
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unison-android-preview
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Prepare stable release signing
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.UNISON_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          encoded = os.environ['KEYSTORE_BASE64']
+          if not encoded: raise SystemExit('Missing Android signing secret; refusing unsigned release')
+          target = Path(os.environ['RUNNER_TEMP']) / 'unison-android.p12'
+          target.write_bytes(base64.b64decode(encoded, validate=True))
+          with open(os.environ['GITHUB_ENV'], 'a') as f: f.write('UNISON_ANDROID_KEYSTORE=' + str(target) + '\n')
+          PY
+      - name: Build signed APK
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          UNISON_ANDROID_STORE_PASSWORD: ${{ secrets.UNISON_ANDROID_STORE_PASSWORD }}
+          UNISON_ANDROID_KEY_PASSWORD: ${{ secrets.UNISON_ANDROID_KEY_PASSWORD }}
+          UNISON_ANDROID_KEY_ALIAS: ${{ secrets.UNISON_ANDROID_KEY_ALIAS }}
+        run: |
+          cd mobile/android
+          ./gradlew :app:assembleRelease --console=plain
+          cd ../..
+          version=$(node -p "require('./mobile/package.json').version")
+          mkdir -p android-release
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk "android-release/unison-${version}-android.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "android-release/unison-${version}-android.apk"
+          (cd android-release && sha256sum *.apk > "unison-${version}-android.apk.sha256")
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: unison-release-android
+          path: android-release/*
+          if-no-files-found: error

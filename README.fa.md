@@ -36,3 +36,9 @@ unison close
 
 GitHub's automatic Contributors list reflects attributed commits on the default
 branch; accepting a collaboration invitation alone does not add an entry.
+
+## نسخهٔ موبایل
+
+کد اندروید و PWA آیفون در پوشهٔ `mobile` قرار دارد. راهنمای نصب، قابلیت‌ها،
+تفاوت با نسخهٔ دسکتاپ و تست‌ها در [راهنمای موبایل](docs/MOBILE.md) آمده است.
+خروجی APK امضاشده و PWA پس از تأیید PR و موفقیت اکشن‌ها ساخته و منتشر می‌شود.

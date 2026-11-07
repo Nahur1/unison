@@ -89,13 +89,27 @@ def platform_assets(directory, version):
     return paths
 
 
-def publish(directory, repository, commit, cross_platform=False):
+def mobile_assets(directory, version):
+    paths = []
+    for suffix in ('android.apk', 'pwa.zip'):
+        package = Path(directory) / f'unison-{version}-{suffix}'
+        checksum = package.with_suffix(package.suffix + '.sha256')
+        expected = f'{hashlib.sha256(package.read_bytes()).hexdigest()}  {package.name}'
+        if not package.stat().st_size or checksum.read_text(encoding='utf-8').strip() != expected:
+            raise ValueError(f'Invalid mobile package/checksum: {package.name}')
+        paths += [package, checksum]
+    return paths
+
+
+def publish(directory, repository, commit, cross_platform=False, mobile=False):
     if repository != "Nahur1/unison" or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Publishing requires the official repository and a full commit SHA")
     version, installer = verify_assets(directory, repository)
     upload_paths = [installer, Path(directory) / "latest.json"]
     if cross_platform:
         upload_paths += platform_assets(directory, version)
+    if mobile:
+        upload_paths += mobile_assets(directory, version)
     declared = re.search(r'^version = "([^"]+)"', Path("Cargo.toml").read_text(encoding="utf-8"), re.MULTILINE)
     if not declared or version != declared.group(1):
         raise ValueError("Build artifacts do not match the checked-out package version")
@@ -145,5 +159,6 @@ if __name__ == "__main__":
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--cross-platform", action="store_true")
+    parser.add_argument("--mobile", action="store_true")
     args = parser.parse_args()
-    publish(args.artifact_dir, args.repository, args.commit, args.cross_platform)
+    publish(args.artifact_dir, args.repository, args.commit, args.cross_platform, args.mobile)

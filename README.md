@@ -60,3 +60,9 @@ Pushes to main and pull requests run native tests on Windows, Linux, Apple Silic
 
 GitHub's automatic Contributors list reflects attributed commits on the default
 branch; accepting a collaboration invitation alone does not add an entry.
+
+## Mobile application
+
+Android and iPhone PWA sources are in `mobile/`. See [mobile features, installation,
+builds and test limits](docs/MOBILE.md). The Android APK and PWA ZIP are built
+by GitHub Actions; signed releases and Pages deployment follow a reviewed merge.
