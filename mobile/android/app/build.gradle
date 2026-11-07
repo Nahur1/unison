@@ -27,6 +27,12 @@ android {
         }
     }
     buildTypes {
+        // Test builds install next to the real app as "Unison Preview" instead of
+        // clashing with it (same package, different key = "App not installed").
+        debug {
+            applicationIdSuffix ".preview"
+            versionNameSuffix "-preview"
+        }
         release {
             if (System.getenv('UNISON_ANDROID_KEYSTORE')) signingConfig signingConfigs.release
             minifyEnabled false

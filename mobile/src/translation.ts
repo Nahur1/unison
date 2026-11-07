@@ -10,9 +10,10 @@ export class OfflineTranslator {
   prepare() {
     if (this.ready) return this.ready;
     this.ready = new Promise<void>((resolve, reject) => {
+      // A classic worker: module workers need WebView 80+, and Android 7-10
+      // phones may still have an older system WebView.
       this.worker = new Worker(
         new URL("./translation.worker.ts", import.meta.url),
-        { type: "module" },
       );
       this.worker.onmessage = ({ data }) => {
         if (data.type === "progress") this.onProgress?.(data.value);

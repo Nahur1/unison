@@ -18,7 +18,7 @@ public class PlaybackLifecycleTest {
     @Test public void realAudioAdvancesAndTaskRemovalStopsService() throws Exception {
         var instrumentation=InstrumentationRegistry.getInstrumentation();
         Context context=instrumentation.getTargetContext();
-        assertEquals("io.github.nahur1.unison",context.getPackageName());
+        assertTrue(context.getPackageName().startsWith("io.github.nahur1.unison"));
         File file=new File(context.getCacheDir(),"lifecycle.wav");
         int samples=8000*15;ByteBuffer wav=ByteBuffer.allocate(44+samples*2).order(ByteOrder.LITTLE_ENDIAN);
         wav.put("RIFF".getBytes()).putInt(36+samples*2).put("WAVEfmt ".getBytes()).putInt(16).putShort((short)1).putShort((short)1).putInt(8000).putInt(16000).putShort((short)2).putShort((short)16).put("data".getBytes()).putInt(samples*2);

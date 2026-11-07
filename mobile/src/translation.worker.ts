@@ -1,12 +1,24 @@
+// A classic worker loading wasm-bindgen's "no-modules" build: module workers and
+// import() in workers need WebView 80+, which Android 7-10 phones may not have.
+type Runtime = ((options: { module_or_path: string }) => Promise<unknown>) & {
+  Translator: new (
+    model: Uint8Array,
+    vocab: Uint8Array,
+    lex: Uint8Array,
+  ) => { translate: (text: string) => string };
+};
+declare const importScripts: (...urls: string[]) => void;
+declare const wasm_bindgen: Runtime;
+
 let translator: { translate: (text: string) => string } | undefined;
 self.onmessage = async ({ data }) => {
   try {
     if (data.type === "init") {
-      const runtimeUrl = new URL("translation/unison.js", data.base).href;
-      const { default: init, Translator } = await import(
-        /* @vite-ignore */ runtimeUrl
-      );
-      await init();
+      importScripts(new URL("translation/unison.js", data.base).href);
+      await wasm_bindgen({
+        module_or_path: new URL("translation/unison_bg.wasm", data.base).href,
+      });
+      const { Translator } = wasm_bindgen;
       const base = new URL("translation/", data.base);
       const entries = await (await fetch(new URL("models.json", base))).json();
       const cache = await caches.open("unison-model-enfa-v1");

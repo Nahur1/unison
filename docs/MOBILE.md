@@ -67,6 +67,31 @@ Screen. Open once online, import your files and prepare offline translation,
 then test Airplane Mode. APK includes the model/runtime for offline first use.
 The PWA ZIP can also be hosted under any HTTPS subdirectory.
 
+## Older Android phones (7–10)
+
+The interface runs inside the phone's Android System WebView, and phones that
+are not updated through Google Play can keep a factory WebView for years.
+Unison supports WebView/Chrome **69 or newer**: JavaScript is compiled for
+Chrome 69, `index.html` polyfills `globalThis`, `queueMicrotask` and
+`String.replaceAll`, the translation worker is a classic script, and the Rust
+translator is built as plain (MVP) WebAssembly by
+`mobile/scripts/build-translator.mjs` (newer WebAssembly features are disabled
+or lowered with binaryen and the result is validated). CSS features newer than
+that (color-mix, dvh, aspect-ratio, inset, flex gap, backdrop blur) have
+fallbacks. Below Chrome 69, Capacitor's `android.minWebViewVersion` shows
+`webview-update.html`, a bilingual page asking to update Android System WebView,
+instead of a blank screen.
+
+Checked on emulators (no physical phone): the signed release installs on
+Android 7.0, 10 and 15. With the factory WebViews of Android 7.0 (Chrome 69)
+and Android 10 (Chrome 74) the interface renders, the model prepares and
+verifies offline, and real sentences translate to Persian. On Android 7.0's
+WebView the bottom tab bar still has a small visual glitch (active icon).
+
+Debug builds use the package `io.github.nahur1.unison.preview` and the name
+"Unison Preview", so a test build never clashes with the signed release
+(same package with a different signing key makes Android refuse to install).
+
 ## Development
 
 Requirements: Node24, Rust stable with wasm32-unknown-unknown, Java21, Android

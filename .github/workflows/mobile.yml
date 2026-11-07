@@ -97,6 +97,10 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: android-actions/setup-android@v3
+        with:
+          # The default also asks for the retired "tools" package, which current
+          # sdkmanager rejects ("Failed to find package 'tools'").
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
       - uses: gradle/actions/setup-gradle@v4
       - run: npm ci
         working-directory: mobile

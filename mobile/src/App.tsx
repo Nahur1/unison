@@ -56,6 +56,16 @@ import { Native, native, nativeUrl } from "./native";
 import { parseBlob } from "music-metadata";
 const translator = new OfflineTranslator(),
   equalizer = new Equalizer();
+// crypto.randomUUID needs WebView 92; Android 7-10 phones can be older.
+function newId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 function IconButton({
   icon: Icon,
   label,
@@ -196,7 +206,7 @@ export default function App() {
       if (e.key !== "Tab") return;
       const list = focusables(),
         first = list[0],
-        last = list.at(-1);
+        last = list[list.length - 1];
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
         last?.focus();
@@ -584,7 +594,7 @@ export default function App() {
           /* Optional metadata never prevents import. */
         }
         const track: Track = {
-          id: crypto.randomUUID(),
+          id: newId(),
           title,
           artist,
           album,
@@ -633,7 +643,7 @@ export default function App() {
           continue;
         }
         const track: Track = {
-          id: crypto.randomUUID(),
+          id: newId(),
           title: file.title || file.name.replace(/\.[^.]+$/, ""),
           artist: file.artist || "Unknown artist",
           album: file.album || "Local collection",
@@ -864,7 +874,7 @@ export default function App() {
   async function addBookmark() {
     if (!current) return;
     const b: Bookmark = {
-      id: crypto.randomUUID(),
+      id: newId(),
       track: current.id,
       time,
       note: note.trim() || "Bookmark",
@@ -881,7 +891,7 @@ export default function App() {
   async function makeSession() {
     if (!sessionName.trim()) return;
     const s: Session = {
-      id: crypto.randomUUID(),
+      id: newId(),
       name: sessionName.trim(),
       tracks: queue,
     };

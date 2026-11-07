@@ -21,6 +21,7 @@
   background: #15131a;
   font-synthesis: none;
   --bg: #15131a;
+  --bg-86: rgba(21, 19, 26, 0.86);
   --fg: #f6f4f9;
   --muted: #a9a5b5;
   --panel: #ffffff08;
@@ -34,6 +35,7 @@
 }
 :root[data-theme="light"] {
   --bg: #f4f2f8;
+  --bg-86: rgba(244, 242, 248, 0.86);
   --fg: #24212d;
   --muted: #746c83;
   --panel: #ffffff99;
@@ -46,6 +48,7 @@
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
     --bg: #f4f2f8;
+    --bg-86: rgba(244, 242, 248, 0.86);
     --fg: #24212d;
     --muted: #746c83;
     --panel: #ffffff99;
@@ -133,6 +136,7 @@ svg {
   stroke-width: 1.65;
 }
 .app-shell {
+  min-height: 100vh;
   min-height: 100dvh;
   background:
     radial-gradient(ellipse at 80% 0%, #aaa2dc10, transparent 52%), var(--bg);
@@ -195,6 +199,7 @@ svg {
 }
 .icon-button.active {
   color: var(--accent);
+  background: rgba(182, 196, 230, 0.12);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .page {
@@ -269,6 +274,8 @@ svg {
   object-fit: cover;
 }
 .art.large {
+  width: 67vw;
+  max-width: 280px;
   width: min(67vw, 280px);
   height: auto;
   aspect-ratio: 1;
@@ -282,6 +289,10 @@ svg {
 .art.large:before {
   content: "";
   position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
   inset: 10px;
   border: 1px solid #ffffff08;
   border-radius: 18px;
@@ -518,6 +529,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 9px 12px calc(9px + var(--safe-bottom));
   height: calc(76px + var(--safe-bottom));
   border-top: 1px solid var(--line);
+  background: var(--bg-86);
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
@@ -590,8 +602,10 @@ input[type="range"]::-moz-range-thumb {
   flex-shrink: 0;
 }
 .chips button.selected {
+  background: rgba(182, 196, 230, 0.17);
   background: color-mix(in srgb, var(--accent) 17%, transparent);
   color: var(--accent);
+  border-color: rgba(182, 196, 230, 0.22);
   border-color: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .list-summary {
@@ -752,6 +766,7 @@ input[type="range"]::-moz-range-thumb {
 .feature-symbol {
   width: 48px;
   height: 48px;
+  background: rgba(182, 196, 230, 0.17);
   background: color-mix(in srgb, var(--accent) 17%, transparent);
   color: var(--accent);
   display: grid;
@@ -802,6 +817,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 6px;
 }
 .segmented button.selected {
+  background: rgba(182, 196, 230, 0.20);
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--fg);
   box-shadow: 0 2px 5px #0002;
@@ -1061,6 +1077,10 @@ input[type="range"]::-moz-range-thumb {
 }
 .sheet-backdrop {
   position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   inset: 0;
   background: #0008;
   backdrop-filter: blur(6px);
@@ -1077,6 +1097,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 12px 24px calc(28px + var(--safe-bottom));
   width: 100%;
   max-width: 600px;
+  max-height: 85vh;
   max-height: 85dvh;
   overflow-y: auto;
   box-shadow: 0 -20px 80px #0003;
@@ -1290,8 +1311,13 @@ input[type="range"]::-moz-range-thumb {
 .player-stage.expanded,
 .player-stage:fullscreen {
   position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   inset: 0;
   width: 100%;
+  height: 100vh;
   height: 100dvh;
   margin: 0;
   background: #000;
@@ -1375,6 +1401,7 @@ input[type="range"]::-moz-range-thumb {
     color: var(--muted);
   }
   .desktop-sidebar > button.selected {
+    background: rgba(182, 196, 230, 0.16);
     background: color-mix(in srgb, var(--accent) 16%, transparent);
     color: var(--fg);
   }
@@ -1560,4 +1587,40 @@ input[type="range"]::-moz-range-thumb {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--muted);
+}
+
+/* Android 7-10 phones can have an old system WebView without aspect-ratio. */
+@supports not (aspect-ratio: 1) {
+  .art.large {
+    height: 67vw;
+    max-height: 280px;
+  }
+  .album-card .art {
+    height: 0;
+    padding-bottom: 100%;
+  }
+  .is-video {
+    height: 62.5vw;
+  }
+  .player-stage.expanded,
+  .player-stage:fullscreen {
+    height: 100vh;
+  }
+}
+/* Without backdrop blur (WebView < 76) the bars would show the page through them. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .bottom-nav,
+  .fullscreen-controls {
+    background: var(--bg);
+  }
+  .sheet-backdrop {
+    background: #000a;
+  }
+}
+/* Old WebViews (before inset/flex gap, ~Chrome 84-87): keep icons off their labels. */
+@supports not (inset: 0) {
+  button > svg:not(:last-child),
+  .card-title > svg:not(:last-child) {
+    margin-right: 8px;
+  }
 }
