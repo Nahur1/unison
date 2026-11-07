@@ -1,14 +1,4 @@
 #!/bin/sh
 set -eu
-# Real collaborators keep their own Git identities.
-for role in AUTHOR COMMITTER; do
-    identity=$(git var "GIT_${role}_IDENT")
-    if printf '%s\n' "$identity" | grep -iEq '^(claude|codex|chatgpt|openai|anthropic|copilot)[[:space:]<]'; then
-        echo 'Commit rejected: configure your real human Git identity.' >&2
-        exit 1
-    fi
-done
-if grep -iEq '^[[:space:]]*Co-Authored-By:[[:space:]]*(claude|codex|chatgpt|openai|anthropic|copilot)([[:space:]<]|$)' "$1"; then
-    echo 'Commit rejected: do not add AI co-author identities.' >&2
-    exit 1
-fi
+root=$(git rev-parse --show-toplevel)
+python "$root/scripts/check-contributors.py" --message-file "$1"

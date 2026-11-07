@@ -28,3 +28,11 @@ unison close
 مخزن مشترک [Nahur1/unison](https://github.com/Nahur1/unison) است. هر نفر با هویت واقعی خودش کامیت می‌زند؛ راهنمای شاخه‌ها، درخواست ادغام و تست در [CONTRIBUTING.md](CONTRIBUTING.md) آمده است. با هر نسخهٔ جدید، اکشن گیت‌هاب ساخت و تست هر چهار خروجی را انجام می‌دهد و فقط پس از موفقیت همهٔ آن‌ها منتشر می‌کند.
 
 [راهنمای ساخت](README.md)، [تست‌های چندپلتفرمی](docs/CROSS_PLATFORM.md) و [انتقال پروژه](docs/PROJECT_IMPORT.md) جزئیات بیشتری دارند. مجوزها و اطلاعیه‌های اجزای ثالث همراه پروژه حفظ شده‌اند.
+
+## Project team
+
+- [Mohammad Fakhari (Nahur1)](https://github.com/Nahur1) — maintainer
+- [Reza Hashemian (reza-hashemian)](https://github.com/reza-hashemian) — maintainer and collaborator
+
+GitHub's automatic Contributors list reflects attributed commits on the default
+branch; accepting a collaboration invitation alone does not add an entry.

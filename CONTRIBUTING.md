@@ -30,3 +30,20 @@ package entry and add `docs/releases/X.Y.Z.md`. After merging to main, Actions
 builds/tests all four platforms and publishes only a complete successful release.
 Never overwrite already-published versions or mix artifacts from different commits.
 Keep dependency license notices and the preserved legacy MIT grant intact.
+
+## Restricted contributor policy
+
+Only Nahur1 and reza-hashemian may author or co-author new project commits.
+Use the GitHub-linked noreply address for your account (with numeric account ID
+preferred). Enable `.githooks` locally. The shared validator checks full history,
+authors, committers and every Co-Authored-By trailer. AI assistance must not add
+AI authors or co-author trailers. Never fabricate a human contribution or rewrite
+someone else's work to evade this policy. Preserve legacy license notices.
+Main requires passing identity/native checks and an approving review from the
+other maintainer. Do not bypass or weaken these controls. Outsider PRs must not
+be merged with outsider authorship. GitHub's web merge committer is allowed only
+as committer, never as author. Owners can change protection settings; Git author
+metadata alone is not proof of a person's identity.
+
+Reza: `git config user.email "63972210+reza-hashemian@users.noreply.github.com"`
+Owner: `git config user.email "51950495+Nahur1@users.noreply.github.com"`

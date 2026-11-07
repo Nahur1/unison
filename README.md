@@ -52,3 +52,11 @@ On Unix run `cargo test --locked`, `cargo build --locked --release`, then `pytho
 Pushes to main and pull requests run native tests on Windows, Linux, Apple Silicon and Intel Mac. A new version on main is published automatically only after every required job succeeds. Bump both Cargo version entries and add release notes for each app update. Pull requests never publish; published versions are never overwritten.
 
 [Project import and naming](docs/PROJECT_IMPORT.md) documents source provenance and the immutable external playback dependency. Existing ownership and third-party terms remain in [LICENSE](LICENSE), [COPYRIGHT.md](COPYRIGHT.md), [THIRD_PARTY.md](THIRD_PARTY.md) and [licenses](licenses).
+
+## Project team
+
+- [Mohammad Fakhari (Nahur1)](https://github.com/Nahur1) — maintainer
+- [Reza Hashemian (reza-hashemian)](https://github.com/reza-hashemian) — maintainer and collaborator
+
+GitHub's automatic Contributors list reflects attributed commits on the default
+branch; accepting a collaboration invitation alone does not add an entry.
