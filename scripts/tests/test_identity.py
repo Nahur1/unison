@@ -1,6 +1,7 @@
 """Protect the display-name/technical-name split and independent installation."""
 import base64
 import json
+import plistlib
 from pathlib import Path
 import re
 import unittest
@@ -25,7 +26,11 @@ class IdentityTests(unittest.TestCase):
         self.assertIn('DefaultDirName={autopf}\\Unison', installer)
         self.assertIn('13A77F89-D5AC-4ECC-A660-FE6C31B12D79', installer)
         self.assertNotIn('3B1C2C37-4876-48D1-93EC-94014678813D', installer)
-        self.assertIn('CFBundleExecutable</key><string>unison', (ROOT / "packaging/macos/Info.plist").read_text())
+        info = plistlib.loads((ROOT / "packaging/macos/Info.plist").read_bytes())
+        self.assertEqual(info['CFBundleExecutable'], 'unison')
+        self.assertEqual(info['CFBundleIdentifier'], 'io.github.nahur1.unison')
+        self.assertEqual(info['CFBundleIconFile'], 'unison')
+        self.assertEqual(info['CFBundleDisplayName'], 'Unison Player')
         self.assertIn('Name=Unison Player', (ROOT / "packaging/linux/unison.desktop").read_text())
         self.assertIn('Exec=unison %U', (ROOT / "packaging/linux/unison.desktop").read_text())
 

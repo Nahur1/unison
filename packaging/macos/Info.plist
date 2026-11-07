@@ -5,13 +5,13 @@
   <key>CFBundleName</key><string>Unison Player</string>
   <key>CFBundleDisplayName</key><string>Unison Player</string>
   <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Mohammad Fakhari (Nahur1). See LICENSE for scope and third-party terms.</string>
-  <key>CFBundleIdentifier</key><string>app.unison.player</string>
+  <key>CFBundleIdentifier</key><string>io.github.nahur1.unison</string>
   <key>CFBundleExecutable</key><string>unison</string>
   <key>CFBundleIconFile</key><string>unison</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>@VERSION@</string>
   <key>CFBundleVersion</key><string>@VERSION@</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.music</string>
 </dict>
