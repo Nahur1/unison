@@ -8,6 +8,7 @@ mod eq;
 mod ipc;
 mod library;
 mod lyrics;
+mod libmpv;
 mod meta;
 mod mpv;
 #[cfg(target_os = "linux")]
@@ -345,6 +346,8 @@ struct Player {
     pending_delete: Option<PathBuf>,
 
     tray: Option<UnisonTray>,
+    /// Closing the window keeps Unison running in the tray (only when a tray exists).
+    close_to_tray: bool,
     subs: subtitle_ui::LiveSubs,
     update_timer: Timer,
     update_checking: bool,
@@ -1544,8 +1547,23 @@ impl Player {
 
     // ---------- tray ----------
 
-    /// Closing always ends playback and the process; minimise is separate.
+    /// Closing the window keeps music playing in the tray. Without a tray it
+    /// quits, like Quit in the tray menu or `unison close`.
     fn close_window(&mut self) {
+        if !self.close_to_tray {
+            self.quit_app();
+            return;
+        }
+        self.save_geometry();
+        if self.is_video && self.playing {
+            self.play_pause();
+        }
+        self.save();
+        let _ = self.ui().hide();
+    }
+
+    /// Ends playback and the process (an update waiting installs afterwards).
+    fn quit_app(&mut self) {
         self.save_geometry();
         self.save();
         self.cancel_fade();
@@ -1663,7 +1681,7 @@ impl Player {
         match cmd {
             Cmd::Toggle => self.play_pause(),
             Cmd::Mute => self.toggle_mute(),
-            Cmd::Close => self.close_window(),
+            Cmd::Close => self.quit_app(),
             Cmd::Play => {
                 if !self.playing {
                     self.play_pause();
@@ -2146,6 +2164,7 @@ fn run() -> anyhow::Result<()> {
             online_lyrics: true,
             pending_delete: None,
             tray: None,
+            close_to_tray: false,
             subs: subtitle_ui::LiveSubs::default(),
             update_timer: Timer::default(),
             update_checking: false,
@@ -2237,13 +2256,11 @@ fn run() -> anyhow::Result<()> {
     });
     ui.on_open_page(|page| {
         community::open_url(match page.as_str() {
-            "telegram" => community::TELEGRAM_URL,
+            "reza" => community::REZA_URL,
+            "nahur1" => community::NAHUR1_URL,
             "releases" => community::RELEASES_URL,
             _ => community::GITHUB_URL,
         });
-    });
-    ui.on_community_closed(|how| {
-        with(|p| p.community_closed(&how));
     });
     ui.on_show_view(|v| {
         with(|p| p.show_view(&v));
@@ -2455,7 +2472,7 @@ fn run() -> anyhow::Result<()> {
     }
     with(|p| p.system = Some(system::System::new(run_cmd)));
 
-    // Tray controls are available while the window is open or minimised.
+    // Tray icon. Closing the window hides it there if the desktop shows tray icons.
     let tray = UnisonTray::new().ok();
     if let Some(t) = &tray {
         t.on_play_pause(|| run_cmd(Cmd::Toggle));
@@ -2463,9 +2480,10 @@ fn run() -> anyhow::Result<()> {
         t.on_prev(|| run_cmd(Cmd::Prev));
         t.on_toggle_mini(|| run_cmd(Cmd::ToggleMini));
         t.on_show_window(|| run_cmd(Cmd::Show));
-        t.on_quit(quit);
+        t.on_quit(|| run_cmd(Cmd::Close));
     }
     with(|p| {
+        p.close_to_tray = tray.is_some() && system::tray_available();
         p.tray = tray;
     });
 

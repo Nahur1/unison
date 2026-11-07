@@ -1,6 +1,6 @@
 # Attribution and bundled components
 
-Unison Player is maintained by Mohammad Fakhari (Nahur1). Its earlier player architecture, music library functionality and previously published MIT material retain their MIT permissions, preserved in `licenses/LEGACY-MIT.txt`. The original player's personal attribution was removed at their request, as confirmed by the project owner. New original material covered by the root LICENSE has separate, restricted terms; those terms do not override this file's component licenses or earlier permissions.
+Unison Player is written by Reza Hashemian and Mohammad Fakhari (Nahur1). Its earlier player architecture and music library functionality come from Nava, the original player by Reza Hashemian; that and other previously published MIT material retain their MIT permissions, preserved in `licenses/LEGACY-MIT.txt`. New original material covered by the root LICENSE has separate, restricted terms; those terms do not override this file's component licenses or earlier permissions.
 
 Live translation uses the English→Persian model (version 1.1) from Mozilla's [Firefox Translations](https://github.com/mozilla/firefox-translations-models), under the Mozilla Public License 2.0; its notice is in `models/enfa/LICENSE.txt`. The model is run by Unison's own Rust code, written from the published Marian model format; no Mozilla or Marian code is included. Checksums are pinned in `src/subtitles.rs` and `scripts/prepare-offline.py`.
 

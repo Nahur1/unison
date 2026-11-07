@@ -1,23 +1,25 @@
 Unison Player - Rights and Use Conditions
 
-Copyright (c) 2026 Mohammad Fakhari (Nahur1), for original contributions
-owned by the author. All rights reserved except as expressly stated below.
+Copyright (c) 2026 Reza Hashemian and Mohammad Fakhari (Nahur1), each for
+the original contributions they own. All rights reserved except as expressly
+stated below.
 
 1. Scope
 
 These conditions apply only to copyrightable original material owned by
-Mohammad Fakhari and first published under these conditions, starting with
+Reza Hashemian or Mohammad Fakhari and first published under these conditions, starting with
 the commit introducing this file on 2026-11-06. They do not claim ownership
 of third-party work or revoke any permission granted for earlier releases.
 
 The source baseline at commit e1f68cf02c4c5c7c71c358a8a970af82c11a10d3 and
 material previously released under MIT remain available under their existing
-MIT terms. The preserved MIT text is in licenses/LEGACY-MIT.txt. Independent
+MIT terms. That baseline started as Nava, the player written by Reza
+Hashemian. The preserved MIT text is in licenses/LEGACY-MIT.txt. Independent
 components retain their own licenses, as described in THIRD_PARTY.md.
 
 2. Official application use
 
-The author permits installation and personal, noncommercial use of official
+The authors permit installation and personal, noncommercial use of official
 Unison Player binaries, including copies necessary for installation and backup.
 This permission does not authorize redistribution of newly restricted material.
 
@@ -26,14 +28,14 @@ This permission does not authorize redistribution of newly restricted material.
 Except for section 2, applicable law, previously granted permissions, and
 independent component licenses, no permission is granted to copy, modify,
 redistribute, sublicense, sell, or create derivative works of material covered
-by these conditions without prior written permission from Mohammad Fakhari.
-No permission is granted to remove the author's notices from that material
+by these conditions without prior written permission from its author.
+No permission is granted to remove the authors' notices from that material
 or to present it as another person's original work.
 
 4. Project identity
 
-Unison Player's name and branding identify this project by Mohammad Fakhari
-(Nahur1). These conditions grant no right to impersonate the author or falsely
+Unison Player's name and branding identify this project by Reza Hashemian and
+Mohammad Fakhari (Nahur1). These conditions grant no right to impersonate the authors or falsely
 present a derivative or redistributed product as an official release.
 They do not assert registered trademark status.
 
@@ -41,10 +43,11 @@ They do not assert registered trademark status.
 
 Hosting on GitHub does not grant additional rights under this file. Viewing
 and forking rights provided by GitHub's applicable terms are not restricted
-by these conditions. Permission requests: https://github.com/Nahur1.
+by these conditions. Permission requests: https://github.com/Nahur1 or
+https://github.com/reza-hashemian.
 
 6. Disclaimer
 
 THE MATERIAL IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. TO THE EXTENT
-PERMITTED BY LAW, THE AUTHOR IS NOT LIABLE FOR CLAIMS OR DAMAGES ARISING
+PERMITTED BY LAW, THE AUTHORS ARE NOT LIABLE FOR CLAIMS OR DAMAGES ARISING
 FROM ITS USE.

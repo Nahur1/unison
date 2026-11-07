@@ -1,10 +1,12 @@
 //! Thin, safe wrapper over the libmpv client API.
 //!
 //! We only bind the handful of functions we need, so there is no build-time
-//! dependency beyond linking `libmpv` itself.
+//! dependency beyond libmpv itself (see `libmpv.rs`).
 
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::ptr;
+
+use crate::libmpv::*;
 
 #[repr(C)]
 pub struct MpvHandle {
@@ -12,7 +14,7 @@ pub struct MpvHandle {
 }
 
 #[repr(C)]
-struct RawEvent {
+pub(crate) struct RawEvent {
     event_id: c_int,
     error: c_int,
     reply_userdata: u64,
@@ -44,22 +46,6 @@ const EVENT_PROPERTY_CHANGE: c_int = 22;
 
 const END_FILE_EOF: c_int = 0;
 const END_FILE_ERROR: c_int = 4;
-
-#[link(name = "mpv")]
-unsafe extern "C" {
-    fn mpv_create() -> *mut MpvHandle;
-    fn mpv_initialize(ctx: *mut MpvHandle) -> c_int;
-    fn mpv_terminate_destroy(ctx: *mut MpvHandle);
-    fn mpv_set_option_string(ctx: *mut MpvHandle, name: *const c_char, data: *const c_char) -> c_int;
-    fn mpv_command(ctx: *mut MpvHandle, args: *mut *const c_char) -> c_int;
-    fn mpv_set_property(ctx: *mut MpvHandle, name: *const c_char, format: c_int, data: *mut c_void) -> c_int;
-    fn mpv_set_property_string(ctx: *mut MpvHandle, name: *const c_char, data: *const c_char) -> c_int;
-    fn mpv_free(data: *mut c_void);
-    fn mpv_get_property(ctx: *mut MpvHandle, name: *const c_char, format: c_int, data: *mut c_void) -> c_int;
-    fn mpv_observe_property(ctx: *mut MpvHandle, userdata: u64, name: *const c_char, format: c_int) -> c_int;
-    fn mpv_wait_event(ctx: *mut MpvHandle, timeout: f64) -> *mut RawEvent;
-    fn mpv_error_string(error: c_int) -> *const c_char;
-}
 
 unsafe extern "C" {
     fn setlocale(category: c_int, locale: *const c_char) -> *mut c_char;
@@ -134,6 +120,7 @@ mod compatibility_tests {
 
 impl Mpv {
     pub fn new() -> anyhow::Result<Self> {
+        crate::libmpv::load()?;
         // mpv refuses to start unless numbers are formatted the C way.
         unsafe { setlocale(LC_NUMERIC, c"C".as_ptr()) };
         let ctx = unsafe { mpv_create() };

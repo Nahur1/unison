@@ -2621,34 +2621,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "unison"
-version = "0.4.0"
-dependencies = [
- "anyhow",
- "dirs",
- "encoding_rs",
- "fastrand",
- "global-hotkey",
- "glow",
- "image",
- "lofty",
- "reqwest",
- "resvg",
- "rfd",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "slint",
- "slint-build",
- "souvlaki",
- "trash",
- "winresource",
- "x11-dl",
- "zbus",
-]
-
-[[package]]
 name = "keyboard-types"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5400,6 +5372,35 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "unison"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "encoding_rs",
+ "fastrand",
+ "global-hotkey",
+ "glow",
+ "image",
+ "libloading",
+ "lofty",
+ "reqwest",
+ "resvg",
+ "rfd",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "slint",
+ "slint-build",
+ "souvlaki",
+ "trash",
+ "winresource",
+ "x11-dl",
+ "zbus",
+]
 
 [[package]]
 name = "untrusted"
