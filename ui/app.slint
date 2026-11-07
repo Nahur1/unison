@@ -673,7 +673,6 @@ component SettingRow inherits HorizontalLayout {
     @children
 }
 
-// A soft pill that opens a web page: "Telegram", "GitHub".
 export component UnisonTray inherits SystemTrayIcon {
     in property <string> now-playing: "Nothing playing";
     in property <bool> playing;
@@ -807,16 +806,14 @@ export component AppWindow inherits Window {
     in-out property <bool> show-equalizer;
     in-out property <bool> show-link-sheet;
     in-out property <bool> show-delete-sheet;
-    // Updates and the community card.
+    // Updates and the About sheet.
     in-out property <bool> show-update-sheet;
     in property <string> app-version;
-    in property <string> update-status; // "", "checking", "latest", "ready", "failed", "portable"
+    in property <string> update-status; // "", "checking", "latest", "available", "ready", "failed"
     in property <string> update-latest;
-    in property <bool> show-community;
     callback check-updates();
     callback install-update();
-    callback open-page(string); // "releases", "github", "telegram"
-    callback community-closed(string); // "later", "never", "followed"
+    callback open-page(string); // "releases", "github"
     in property <string> delete-title;
     in property <string> delete-path;
     in property <bool> has-ytdlp: true;
@@ -1334,10 +1331,10 @@ export component AppWindow inherits Window {
                             }
                             IconButton {
                                 icon: Icons.update;
-                                tint: root.update-status == "ready" ? Theme.accent : Theme.muted;
+                                tint: root.update-status == "ready" || root.update-status == "available" ? Theme.accent : Theme.muted;
                                 size: 32px;
                                 icon-size: 17px;
-                                badge: root.update-status == "ready" ? " " : "";
+                                badge: root.update-status == "ready" || root.update-status == "available" ? " " : "";
                                 clicked => { root.show-update-sheet = true; }
                             }
                             Rectangle { }
@@ -3870,13 +3867,13 @@ export component AppWindow inherits Window {
             Text { text: "Unison Player"; color: Theme.fg; font-size: 24px; font-weight: 700; horizontal-alignment: center; }
             Text { text: "یونیسون پلیر"; font-family: "Vazirmatn"; color: Theme.muted; font-size: 18px; horizontal-alignment: center; }
             Text { text: "Version " + root.app-version + " · independent local edition"; color: Theme.muted; horizontal-alignment: center; }
-            Text { text: "By Mohammad Fakhari (Nahur1)"; color: Theme.fg; font-size: 13px; horizontal-alignment: center; }
+            Text { text: "By Reza Hashemian and Mohammad Fakhari (Nahur1)"; color: Theme.fg; font-size: 13px; horizontal-alignment: center; wrap: word-wrap; }
             Text { text: "Music, films and natural Persian subtitles. Powered by Slint, libmpv and the offline Firefox Translations model by Mozilla."; color: Theme.fg; wrap: word-wrap; font-size: 13px; }
-            Text { text: "© 2026 Mohammad Fakhari (Nahur1). See LICENSE for rights and third-party terms. Subtitles are translated on this computer."; color: Theme.muted; wrap: word-wrap; font-size: 12px; }
+            Text { text: "© 2026 Reza Hashemian and Mohammad Fakhari (Nahur1). See LICENSE for rights and third-party terms. Subtitles are translated on this computer."; color: Theme.muted; wrap: word-wrap; font-size: 12px; }
             Rectangle {
                 height: 44px;
                 border-radius: 10px;
-                background: root.update-status == "ready" ? Theme.accent.with-alpha(0.16) : Theme.faint;
+                background: root.update-status == "ready" || root.update-status == "available" ? Theme.accent.with-alpha(0.16) : Theme.faint;
                 Text {
                     x: 14px;
                     width: parent.width - 28px;
@@ -3888,17 +3885,18 @@ export component AppWindow inherits Window {
                         : root.update-status == "checking" ? "Checking for updates…"
                         : root.update-status == "latest" ? "You have the latest version. Unison checks for updates automatically."
                         : root.update-status == "failed" ? "Couldn't reach the update server. Unison will try again later."
-                        : root.update-status == "portable" ? "Portable copy: install with the setup file to get automatic updates."
+                        : root.update-status == "available" ? "Version " + root.update-latest + " is available. Download it from Releases."
                         : "Unison checks for updates automatically.";
                 }
             }
             HorizontalLayout {
                 spacing: 8px;
-                GhostButton { text: "Releases"; clicked => { root.open-page("releases"); } }
+                GhostButton { text: "GitHub"; clicked => { root.open-page("github"); } }
                 Rectangle { horizontal-stretch: 1; }
+                if root.update-status == "available": PrimaryButton { text: "Download"; clicked => { root.open-page("releases"); } }
                 if root.update-status == "ready": PrimaryButton { text: "Restart and update"; clicked => { root.install-update(); } }
-                if root.update-status != "ready" && root.update-status != "portable": GhostButton { text: "Check now"; clicked => { root.check-updates(); } }
-                if root.update-status != "ready": PrimaryButton { text: "Done"; clicked => { root.show-update-sheet = false; } }
+                if root.update-status != "ready" && root.update-status != "available": GhostButton { text: "Check now"; clicked => { root.check-updates(); } }
+                if root.update-status != "ready" && root.update-status != "available": PrimaryButton { text: "Done"; clicked => { root.show-update-sheet = false; } }
             }
         }
 
