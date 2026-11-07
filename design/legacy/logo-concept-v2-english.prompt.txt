@@ -1,0 +1,2 @@
+Tool: built-in image_gen
+Edit prompt: Remove the Persian wordmark entirely, preserve the original icon and graphite background, and move the unchanged KAGHAZ PLAYER English wordmark upward beneath the icon for balanced spacing.

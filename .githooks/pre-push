@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+zero='0000000000000000000000000000000000000000'
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue
+    # Human authors are allowed; collaborator authorship must not be rewritten.
+    if git log --format='%an <%ae>%n%cn <%ce>' "$local_sha" -- | grep -iEq '^(claude|codex|chatgpt|openai|anthropic|copilot)[[:space:]<]'; then
+        echo 'Push rejected: history contains an AI author identity.' >&2
+        exit 1
+    fi
+    if git log --format='%B' "$local_sha" -- | grep -iEq '^[[:space:]]*Co-Authored-By:[[:space:]]*(claude|codex|chatgpt|openai|anthropic|copilot)([[:space:]<]|$)'; then
+        echo 'Push rejected: history contains an AI co-author identity.' >&2
+        exit 1
+    fi
+done

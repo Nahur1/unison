@@ -1,0 +1,98 @@
+[package]
+name = "unison"
+version = "0.4.0"
+edition = "2024"
+description = "A calm, glassy music and video player with live offline Persian subtitles (Slint + libmpv)"
+authors = ["Mohammad Fakhari (Nahur1) <51950495+Nahur1@users.noreply.github.com>"]
+repository = "https://github.com/Nahur1/unison"
+homepage = "https://github.com/Nahur1/unison"
+license-file = "LICENSE"
+
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+encoding_rs = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+anyhow = "1.0.104"
+dirs = "7.0.0"
+fastrand = "2.5.0"
+glow = "0.18"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+lofty = "0.25.4"
+rfd = "0.17.2"
+rusqlite = { version = "0.41.0", features = ["bundled"] }
+slint = { version = "1.18.1", default-features = false, features = ["std", "backend-winit", "renderer-software", "renderer-femtovg", "renderer-skia", "compat-1-2", "unstable-winit-030", "system-tray"] }
+trash = "5.2.9"
+
+# Global shortcuts: our own event-driven X11 grab on Linux, global-hotkey elsewhere.
+# Media keys too: our own MPRIS service on Linux, souvlaki on macOS/Windows.
+[target.'cfg(target_os = "linux")'.dependencies]
+x11-dl = "2.21"
+zbus = "5.19"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+global-hotkey = "0.9.0"
+souvlaki = "0.8.3"
+
+[build-dependencies]
+slint-build = "1.18.1"
+
+[[bin]]
+name = "unison"
+path = "src/main.rs"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[dev-dependencies]
+resvg = "0.48"
+
+# --- Packaging (used by CI) ---
+
+[package.metadata.deb]
+section = "sound"
+priority = "optional"
+depends = "$auto"
+recommends = "yt-dlp"
+extended-description = "Unison is a calm, glassy music and video player written in Rust, built on Slint and libmpv."
+assets = [
+    ["target/release/unison", "usr/bin/", "755"],
+    ["packaging/linux/unison.desktop", "usr/share/applications/", "644"],
+    ["ui/icons/unison.svg", "usr/share/icons/hicolor/scalable/apps/unison.svg", "644"],
+    ["ui/icons/unison-512.png", "usr/share/icons/hicolor/512x512/apps/unison.png", "644"],
+    ["ui/icons/unison-256.png", "usr/share/icons/hicolor/256x256/apps/unison.png", "644"],
+    ["ui/icons/unison-128.png", "usr/share/icons/hicolor/128x128/apps/unison.png", "644"],
+    ["ui/icons/unison-64.png", "usr/share/icons/hicolor/64x64/apps/unison.png", "644"],
+    ["ui/icons/unison-32.png", "usr/share/icons/hicolor/32x32/apps/unison.png", "644"],
+    ["README.md", "usr/share/doc/unison/README.md", "644"],
+    ["LICENSE", "usr/share/doc/unison/LICENSE", "644"],
+    ["COPYRIGHT.md", "usr/share/doc/unison/COPYRIGHT.md", "644"],
+    ["THIRD_PARTY.md", "usr/share/doc/unison/THIRD_PARTY.md", "644"],
+    ["licenses/LEGACY-MIT.txt", "usr/share/doc/unison/licenses/LEGACY-MIT.txt", "644"],
+]
+
+[package.metadata.generate-rpm]
+auto-req = "builtin"
+assets = [
+    { source = "LICENSE", dest = "/usr/share/doc/unison/LICENSE", mode = "644" },
+    { source = "COPYRIGHT.md", dest = "/usr/share/doc/unison/COPYRIGHT.md", mode = "644" },
+    { source = "THIRD_PARTY.md", dest = "/usr/share/doc/unison/THIRD_PARTY.md", mode = "644" },
+    { source = "licenses/LEGACY-MIT.txt", dest = "/usr/share/doc/unison/licenses/LEGACY-MIT.txt", mode = "644" },
+    { source = "target/release/unison", dest = "/usr/bin/unison", mode = "755" },
+    { source = "packaging/linux/unison.desktop", dest = "/usr/share/applications/unison.desktop", mode = "644" },
+    { source = "ui/icons/unison.svg", dest = "/usr/share/icons/hicolor/scalable/apps/unison.svg", mode = "644" },
+    { source = "ui/icons/unison-512.png", dest = "/usr/share/icons/hicolor/512x512/apps/unison.png", mode = "644" },
+    { source = "ui/icons/unison-256.png", dest = "/usr/share/icons/hicolor/256x256/apps/unison.png", mode = "644" },
+    { source = "ui/icons/unison-128.png", dest = "/usr/share/icons/hicolor/128x128/apps/unison.png", mode = "644" },
+    { source = "ui/icons/unison-64.png", dest = "/usr/share/icons/hicolor/64x64/apps/unison.png", mode = "644" },
+    { source = "ui/icons/unison-32.png", dest = "/usr/share/icons/hicolor/32x32/apps/unison.png", mode = "644" },
+]

@@ -1,0 +1,11 @@
+/target
+/dist
+/.tools
+/models
+/runtime
+/test-results
+*.part
+__pycache__/
+/AppDir
+*.AppImage
+jafplayer-spec.html

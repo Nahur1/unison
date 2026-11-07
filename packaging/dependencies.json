@@ -1,0 +1,9 @@
+{
+  "windows_playback_seed": {
+    "repository": "Nahur1/kaghaz-player",
+    "tag": "v0.3.3",
+    "asset": "kaghaz-setup-0.3.3.exe",
+    "sha256": "ce71da4535d6a0186c773146b97317b8eaed83ff52f7b47b51e5d17dd3b3cea6",
+    "purpose": "Immutable external bootstrap for libmpv only; not the Unison application or update source."
+  }
+}

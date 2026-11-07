@@ -1,0 +1,6 @@
+English -> Persian translation model (model.enfa.intgemm.alphas.bin, vocab.enfa.spm,
+lex.50.50.enfa.s2t.bin), version 1.1, from Mozilla's Firefox Translations project:
+https://github.com/mozilla/firefox-translations-models
+
+These files are distributed under the Mozilla Public License, version 2.0.
+A copy of the license is available at https://mozilla.org/MPL/2.0/

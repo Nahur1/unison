@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Unison Player
+X-Unison-Maintainer=Mohammad Fakhari (Nahur1)
+GenericName=Music Player
+Comment=A calm, glassy music and video player
+Exec=unison %U
+Icon=unison
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;audio/aac;audio/x-m4a;audio/opus;video/mp4;video/x-matroska;video/webm;inode/directory;
+StartupWMClass=unison
+Keywords=music;audio;player;mpv;

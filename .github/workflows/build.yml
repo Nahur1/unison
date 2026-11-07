@@ -1,0 +1,175 @@
+name: Unison native builds and release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: unison-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Playback dependency and fonts
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force .tools, runtime/fonts | Out-Null
+          # An immutable external playback seed; all Unison releases use this repository.
+          $dependency = (Get-Content packaging/dependencies.json -Raw | ConvertFrom-Json).windows_playback_seed
+          gh release download $dependency.tag --repo $dependency.repository --pattern $dependency.asset --output .tools/playback-seed.exe
+          if ($LASTEXITCODE) { throw 'Playback dependency download failed' }
+          $setup = Join-Path $PWD '.tools/playback-seed.exe'
+          $expected = $dependency.sha256
+          if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
+            throw 'Playback dependency checksum mismatch'
+          }
+          $seed = Join-Path $PWD '.tools/seed-app'
+          $install = Start-Process -FilePath $setup -WindowStyle Hidden -Wait -PassThru -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOICONS', '/TASKS=', "/DIR=`"$seed`""
+          )
+          if ($install.ExitCode -notin 0, 3010) { throw "Dependency setup failed: $($install.ExitCode)" }
+          Copy-Item -LiteralPath (Join-Path $seed 'libmpv-2.dll') -Destination runtime/libmpv-2.dll
+          Copy-Item ui/fonts/* runtime/fonts
+          python scripts/prepare-offline.py
+      - name: Tests
+        shell: pwsh
+        run: ./scripts/build.ps1 -Test
+      - name: Test release automation
+        shell: pwsh
+        run: python -m unittest discover -s scripts/tests -v
+      - name: Build installer and update manifest
+        shell: pwsh
+        run: ./scripts/release.ps1
+      - name: Smoke test real player lifecycle
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          python scripts/smoke-player.py --exe "dist/unison-$version/unison.exe"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unison-release-windows-x64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/unison-setup-*.exe
+            dist/latest.json
+  unix:
+    name: ${{ matrix.platform }}-${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform: linux
+            arch: amd64
+          - runner: macos-15
+            platform: macos
+            arch: arm64
+          - runner: macos-15-intel
+            platform: macos
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: 3
+      MACOSX_DEPLOYMENT_TARGET: '15.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.platform }}-${{ matrix.arch }}
+          cache-on-failure: true
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmpv-dev libx11-dev libxext-dev libxkbcommon-dev libwayland-dev libegl1-mesa-dev libgl1-mesa-dev libfontconfig1-dev libfreetype6-dev libdbus-1-dev libssl-dev libasound2-dev libgtk-3-dev libclang-dev clang cmake ninja-build pkg-config xvfb xauth dbus-x11 dpkg-dev ffmpeg openbox gdb
+      - name: macOS native dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install mpv dylibbundler
+          echo "MPV_LIB_DIR=$(brew --prefix mpv)/lib" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$(brew --prefix)/lib" >> "$GITHUB_ENV"
+      - name: Prepare verified offline translation model
+        run: python3 scripts/prepare-offline.py
+      - name: Unit and release tests
+        run: |
+          cargo test --locked
+          python3 -m unittest discover -s scripts/tests -v
+      - name: Test actual offline English to Persian inference
+        run: cargo test --locked --release mt::tests::real_model_translates -- --ignored --nocapture
+      - name: Build and package native player
+        run: |
+          cargo build --locked --release
+          python3 scripts/package-unix.py ${{ matrix.platform }}
+      - name: Generate video rendering fixture
+        run: ffmpeg -y -f lavfi -i testsrc2=size=320x180:rate=15 -f lavfi -i anullsrc=r=44100:cl=stereo -t 90 -c:v mpeg4 -c:a aac "$RUNNER_TEMP/unison-smoke.mp4"
+      - name: Install and test Linux package
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y ./dist/unison-*-linux-amd64.deb
+          test -s /usr/lib/unison/models/enfa/model.enfa.intgemm.alphas.bin
+          test -s /usr/lib/unison/runtime/fonts/Vazirmatn.ttf
+          dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/unison-openbox.log 2>&1 & python3 scripts/smoke-player.py --exe /usr/bin/unison && python3 scripts/smoke-player.py --exe /usr/bin/unison --video "$RUNNER_TEMP/unison-smoke.mp4"'
+      - name: Mount and test macOS disk image
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p "$RUNNER_TEMP/unison-mounted"
+          hdiutil attach dist/unison-*-macos-${{ matrix.arch }}.dmg -nobrowse -readonly -mountpoint "$RUNNER_TEMP/unison-mounted"
+          trap 'hdiutil detach "$RUNNER_TEMP/unison-mounted"' EXIT
+          cp -R "$RUNNER_TEMP/unison-mounted/Unison Player.app" "$RUNNER_TEMP/Unison Player.app"
+          codesign --verify --deep --strict "$RUNNER_TEMP/Unison Player.app"
+          test -s "$RUNNER_TEMP/Unison Player.app/Contents/Resources/models/enfa/model.enfa.intgemm.alphas.bin"
+          test -s "$RUNNER_TEMP/Unison Player.app/Contents/Resources/runtime/fonts/Vazirmatn.ttf"
+          python3 scripts/smoke-player.py --exe "$RUNNER_TEMP/Unison Player.app/Contents/MacOS/unison"
+          python3 scripts/smoke-player.py --exe "$RUNNER_TEMP/Unison Player.app/Contents/MacOS/unison" --video "$RUNNER_TEMP/unison-smoke.mp4"
+      - name: Diagnose Linux video failure
+        if: failure() && runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          export UNISON_PROFILE_DIR="$RUNNER_TEMP/diagnostic-profile"
+          export UNISON_SOCKET="$RUNNER_TEMP/diagnostic.sock"
+          export UNISON_RENDERER=gl UNISON_AO=null UNISON_MPV_LOG=1 SLINT_SCALE_FACTOR=1
+          dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/unison-diagnostic-openbox.log 2>&1 & timeout 30 gdb --batch -ex run -ex "thread apply all bt" --args /usr/bin/unison "$RUNNER_TEMP/unison-smoke.mp4"'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unison-release-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/*.deb
+            dist/*.dmg
+            dist/*.sha256
+  publish:
+    if: github.repository == 'Nahur1/unison' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [windows, unix]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: unison-release-*
+          merge-multiple: true
+          path: release-assets
+      - name: Verify and publish new version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-release.py --artifact-dir release-assets --commit "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY" --cross-platform
