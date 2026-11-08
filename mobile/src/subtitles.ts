@@ -84,3 +84,63 @@ export function formatTime(seconds: number) {
     ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`
     : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
+export function decodeSubtitle(bytes: Uint8Array): string {
+  if (bytes[0] === 255 && bytes[1] === 254)
+    return new TextDecoder("utf-16le").decode(bytes);
+  if (bytes[0] === 254 && bytes[1] === 255)
+    return new TextDecoder("utf-16be").decode(bytes);
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    // Older subtitle files are often saved in a Windows code page.
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+export function parseCaptionFile(
+  name: string,
+  input: string,
+  duration = 0,
+): Cue[] {
+  if (!name.toLowerCase().endsWith(".lrc")) return parseSubtitles(input);
+  const parsed = input
+    .split("\n")
+    .flatMap((line) => {
+      const m = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
+      return m
+        ? [
+            {
+              start: Number(m[1]) * 60 + Number(m[2]),
+              end: 0,
+              text: m[3].trim(),
+            },
+          ]
+        : [];
+    })
+    .sort((a, b) => a.start - b.start);
+  return parsed.map((c, i) => ({
+    ...c,
+    end: parsed[i + 1]?.start || duration || c.start + 8,
+  }));
+}
+/** "Movie.2019.en.forced.srt" and "Movie.2019.mkv" both become "movie.2019". */
+export function mediaBaseName(name: string): string {
+  let base = name.toLowerCase().replace(/\.[^.]+$/, "");
+  while (
+    /\.(en|eng|english|fa|per|fas|persian|forced|sdh|hi|cc|default)$/.test(base)
+  )
+    base = base.replace(/\.[^.]+$/, "");
+  return base.trim();
+}
+export function bestEmbeddedTrack<
+  T extends { language: string; label: string; cues: unknown[] },
+>(tracks: T[]): T | undefined {
+  const score = (t: T) => {
+    const label = `${t.language} ${t.label}`.toLowerCase();
+    return (
+      (/^en|english/.test(label) ? 2 : 0) +
+      (/forced|sign/.test(label) ? -3 : 0) +
+      Math.min(t.cues.length, 5000) / 10000
+    );
+  };
+  return [...tracks].sort((a, b) => score(b) - score(a))[0];
+}

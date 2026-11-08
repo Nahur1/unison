@@ -30,7 +30,10 @@ public class UnisonMediaPlugin extends Plugin {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final java.util.concurrent.ExecutorService imports=Executors.newSingleThreadExecutor();
     private final Runnable tick=new Runnable(){public void run(){emit(false);handler.postDelayed(this,250);}};
-    @Override public void load(){handler.post(tick);}
+    static UnisonMediaPlugin instance;
+    volatile boolean autoPictureInPicture;
+    private android.util.Rational pipAspect=new android.util.Rational(16,9);
+    @Override public void load(){instance=this;handler.post(tick);}
     private void emit(boolean ended){if(controller==null)return;JSObject result=new JSObject();result.put("playing",controller.isPlaying());result.put("position",controller.getCurrentPosition()/1000.0);result.put("duration",Math.max(0,controller.getDuration())/1000.0);result.put("ended",ended);MediaItem item=controller.getCurrentMediaItem();result.put("trackId",item==null?"":item.mediaId);notifyListeners("state",result);}
     private interface Action { void run() throws Exception; }
     private void connected(PluginCall call,Action action){getActivity().runOnUiThread(()->{
@@ -40,9 +43,11 @@ public class UnisonMediaPlugin extends Plugin {
     });}
     private void execute(PluginCall call,Action action){try{action.run();call.resolve();}catch(Exception e){call.reject(e.getMessage(),e);}}
     private Uri localUri(String path)throws IOException{return Uri.fromFile(LocalMedia.requireImported(getContext().getFilesDir(),path));}
-    @PluginMethod public void pickFiles(PluginCall call){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.setType("*/*");intent.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"audio/*","video/*"});intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);intent.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(call,intent,"filesSelected");}
-    @ActivityCallback private void filesSelected(PluginCall call,ActivityResult result){if(call==null)return;if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null){call.resolve(new JSObject().put("files",new JSArray()));return;}Intent data=result.getData();List<Uri> uris=new ArrayList<>();if(data.getClipData()!=null){for(int i=0;i<data.getClipData().getItemCount();i++)uris.add(data.getClipData().getItemAt(i).getUri());}else if(data.getData()!=null)uris.add(data.getData());
-        imports.execute(()->{JSArray files=new JSArray();try{File folder=new File(getContext().getFilesDir(),"media");if(!folder.isDirectory()&&!folder.mkdirs())throw new IOException("Could not create media folder");for(Uri uri:uris){String name="Media";try(Cursor cursor=getContext().getContentResolver().query(uri,null,null,null,null)){if(cursor!=null&&cursor.moveToFirst()){int column=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);if(column>=0)name=cursor.getString(column);}}String mime=getContext().getContentResolver().getType(uri);if(mime==null||(!mime.startsWith("audio/")&&!mime.startsWith("video/")))continue;
+    @PluginMethod public void pickFiles(PluginCall call){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.setType("*/*");intent.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"audio/*","video/*","text/*","application/x-subrip","application/x-ssa","application/octet-stream"});intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);intent.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(call,intent,"filesSelected");}
+    @ActivityCallback private void filesSelected(PluginCall call,ActivityResult result){if(call==null)return;if(result.getResultCode()!=Activity.RESULT_OK||result.getData()==null){call.resolve(new JSObject().put("files",new JSArray()).put("subtitles",new JSArray()));return;}Intent data=result.getData();List<Uri> uris=new ArrayList<>();if(data.getClipData()!=null){for(int i=0;i<data.getClipData().getItemCount();i++)uris.add(data.getClipData().getItemAt(i).getUri());}else if(data.getData()!=null)uris.add(data.getData());
+        imports.execute(()->{JSArray files=new JSArray(),subtitles=new JSArray();try{File folder=new File(getContext().getFilesDir(),"media");if(!folder.isDirectory()&&!folder.mkdirs())throw new IOException("Could not create media folder");for(Uri uri:uris){String name="Media";try(Cursor cursor=getContext().getContentResolver().query(uri,null,null,null,null)){if(cursor!=null&&cursor.moveToFirst()){int column=cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);if(column>=0)name=cursor.getString(column);}}String mime=getContext().getContentResolver().getType(uri);
+            if(LocalMedia.isSubtitle(name)){subtitles.put(readSubtitle(uri,name));continue;}
+            if(mime==null||(!mime.startsWith("audio/")&&!mime.startsWith("video/")))continue;
             String extension=name.contains(".")?name.substring(name.lastIndexOf('.')).replaceAll("[^.a-zA-Z0-9]",""):"";File target=new File(folder,UUID.randomUUID()+extension);File partial=new File(folder,target.getName()+".part");try(InputStream input=getContext().getContentResolver().openInputStream(uri);OutputStream output=new FileOutputStream(partial)){if(input==null)throw new IOException("Could not read "+name);byte[] buffer=new byte[128*1024];int read;while((read=input.read(buffer))!=-1)output.write(buffer,0,read);}catch(Exception e){partial.delete();throw e;}if(!partial.renameTo(target))throw new IOException("Could not finish importing "+name);
             JSObject item=new JSObject();item.put("path",target.getAbsolutePath());item.put("uri",Uri.fromFile(target).toString());item.put("name",name);item.put("size",target.length());item.put("mime",mime);
             try(android.media.MediaMetadataRetriever metadata=new android.media.MediaMetadataRetriever()) {
@@ -56,9 +61,29 @@ public class UnisonMediaPlugin extends Plugin {
                 if(cover!=null&&cover.length<10*1024*1024){android.graphics.BitmapFactory.Options options=new android.graphics.BitmapFactory.Options();options.inJustDecodeBounds=true;android.graphics.BitmapFactory.decodeByteArray(cover,0,cover.length,options);options.inSampleSize=Math.max(1,Math.max(options.outWidth,options.outHeight)/512);options.inJustDecodeBounds=false;android.graphics.Bitmap bitmap=android.graphics.BitmapFactory.decodeByteArray(cover,0,cover.length,options);if(bitmap!=null){ByteArrayOutputStream jpeg=new ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,85,jpeg);bitmap.recycle();item.put("artwork",android.util.Base64.encodeToString(jpeg.toByteArray(),android.util.Base64.NO_WRAP));}}
             }catch(Exception optionalMetadata) { /* A malformed tag must not prevent local playback. */ }
             files.put(item);
-        }call.resolve(new JSObject().put("files",files));}catch(Exception e){call.reject("Import failed: "+e.getMessage(),e);}});
+        }call.resolve(new JSObject().put("files",files).put("subtitles",subtitles));}catch(Exception e){call.reject("Import failed: "+e.getMessage(),e);}});
+    }
+    private JSObject readSubtitle(Uri uri,String name)throws IOException{
+        ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+        try(InputStream input=getContext().getContentResolver().openInputStream(uri)){
+            if(input==null)throw new IOException("Could not read "+name);
+            byte[] buffer=new byte[64*1024];int read;
+            while((read=input.read(buffer))!=-1){bytes.write(buffer,0,read);if(bytes.size()>LocalMedia.MAX_SUBTITLE_BYTES)throw new IOException(name+" is too large for a subtitle file");}
+        }
+        return new JSObject().put("name",name).put("data",android.util.Base64.encodeToString(bytes.toByteArray(),android.util.Base64.NO_WRAP));
     }
     @PluginMethod public void play(PluginCall call){connected(call,()->{List<MediaItem> list=new ArrayList<>();JSArray items=call.getArray("items",new JSArray());for(int i=0;i<items.length();i++){JSONObject item=items.getJSONObject(i);list.add(new MediaItem.Builder().setMediaId(item.getString("id")).setUri(localUri(item.getString("uri"))).setMediaMetadata(new MediaMetadata.Builder().setTitle(item.optString("title")).setArtist(item.optString("artist")).build()).build());}if(list.isEmpty())list.add(new MediaItem.Builder().setUri(localUri(call.getString("uri"))).build());int index=call.getInt("index",0);controller.setMediaItems(list,Math.min(Math.max(index,0),list.size()-1),(long)(call.getDouble("position",0.0)*1000));controller.prepare();controller.play();});}
+    @PluginMethod public void pictureInPicture(PluginCall call){getActivity().runOnUiThread(()->{try{pipAspect=aspect(call.getInt("width",16),call.getInt("height",9));if(!enterPictureInPicture())throw new IOException("Mini player needs Android 8 or newer");call.resolve();}catch(Exception e){call.reject(e.getMessage(),e);}});}
+    @PluginMethod public void setAutoPictureInPicture(PluginCall call){autoPictureInPicture=call.getBoolean("enabled",false);pipAspect=aspect(call.getInt("width",16),call.getInt("height",9));call.resolve();}
+    private static android.util.Rational aspect(int width,int height){if(width<=0||height<=0)return new android.util.Rational(16,9);double ratio=Math.max(1/2.39,Math.min(2.39,width/(double)height));return new android.util.Rational((int)Math.round(ratio*1000),1000);}
+    boolean enterPictureInPicture(){
+        Activity activity=getActivity();
+        if(android.os.Build.VERSION.SDK_INT<26||activity==null||!activity.getPackageManager().hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE))return false;
+        return activity.enterPictureInPictureMode(new android.app.PictureInPictureParams.Builder().setAspectRatio(pipAspect).build());
+    }
+    void pictureInPictureChanged(boolean active){notifyListeners("pip",new JSObject().put("active",active));}
+    @PluginMethod public void pickSubtitles(PluginCall call){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.setType("*/*");intent.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(call,intent,"filesSelected");}
+    @PluginMethod public void extractSubtitles(PluginCall call){imports.execute(()->{try{call.resolve(new JSObject().put("tracks",SubtitleExtractor.extract(LocalMedia.requireImported(getContext().getFilesDir(),call.getString("path")))));}catch(Exception e){call.reject("Could not read subtitles inside the video: "+e.getMessage(),e);}});}
     @PluginMethod public void sleep(PluginCall call){connected(call,()->{if(PlaybackService.instance!=null)PlaybackService.instance.sleep(call.getInt("minutes",0));});}
     @PluginMethod public void removeFile(PluginCall call){try{Uri uri=localUri(call.getString("path"));File file=new File(uri.getPath());if(!file.delete())throw new IOException("Could not remove imported copy");call.resolve();}catch(Exception e){call.reject(e.getMessage(),e);}}
     @PluginMethod public void status(PluginCall call){connected(call,()->emit(false));}
@@ -68,5 +93,5 @@ public class UnisonMediaPlugin extends Plugin {
     @PluginMethod public void configure(PluginCall call){connected(call,()->{controller.setVolume(call.getBoolean("muted",false)?0:call.getFloat("volume",0.8f));controller.setPlaybackSpeed(call.getFloat("speed",1f));String repeat=call.getString("repeat","off");controller.setRepeatMode(repeat.equals("one")?Player.REPEAT_MODE_ONE:repeat.equals("all")?Player.REPEAT_MODE_ALL:Player.REPEAT_MODE_OFF);controller.setShuffleModeEnabled(call.getBoolean("shuffle",false));if(PlaybackService.instance!=null){float[] values=new float[10];JSArray array=call.getArray("gains",new JSArray());for(int i=0;i<Math.min(10,array.length());i++)values[i]=(float)array.optDouble(i,0);PlaybackService.instance.configureEqualizer(call.getBoolean("eq",false),values);}});}
     @PluginMethod public void stop(PluginCall call){getActivity().runOnUiThread(()->{if(controller!=null){controller.stop();controller.clearMediaItems();}call.resolve();});}
     @PluginMethod public void close(PluginCall call){getActivity().runOnUiThread(()->{if(PlaybackService.instance!=null)PlaybackService.instance.stopPlayback();getContext().stopService(new Intent(getContext(),PlaybackService.class));call.resolve();getActivity().finishAndRemoveTask();});}
-    @Override protected void handleOnDestroy(){handler.removeCallbacksAndMessages(null);imports.shutdown();if(connecting!=null)MediaController.releaseFuture(connecting);controller=null;super.handleOnDestroy();}
+    @Override protected void handleOnDestroy(){if(instance==this)instance=null;handler.removeCallbacksAndMessages(null);imports.shutdown();if(connecting!=null)MediaController.releaseFuture(connecting);controller=null;super.handleOnDestroy();}
 }
