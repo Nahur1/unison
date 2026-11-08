@@ -87,7 +87,7 @@ def linux():
     (source / "debian/control").write_text("Source: unison\n\nPackage: unison\nArchitecture: any\n", encoding="utf-8")
     deps = subprocess.check_output(["dpkg-shlibdeps", "--ignore-missing-info", "-O",
                                     f"-e{app / 'unison'}"], text=True, cwd=source)
-    dependencies = deps.strip().removeprefix("shlibs:Depends=")
+    dependencies = debian_dependencies(deps)
     # X11/Wayland are dynamically loaded by winit and need explicit runtime deps.
     dependencies += ", libxkbcommon0, libxkbcommon-x11-0, libx11-6, libxcursor1, libxi6, libxrandr2, libwayland-client0, libwayland-cursor0, libwayland-egl1, libegl1, libgl1"
     (control / "control").write_text(
@@ -100,6 +100,17 @@ def linux():
     output = DIST / f"unison-{VERSION}-linux-{arch}.deb"
     command("dpkg-deb", "--root-owner-group", "--build", stage, output)
     return output
+
+
+def debian_dependencies(shlibs):
+    """Depends from dpkg-shlibdeps, plus whichever libmpv the system ships.
+
+    Unison opens libmpv.so.2 or libmpv.so.1 at startup (src/libmpv.rs), so
+    the package accepts either instead of the one present on the build machine.
+    """
+    entries = [d.strip() for d in shlibs.strip().removeprefix("shlibs:Depends=").split(",") if d.strip()]
+    entries = [d for d in entries if not d.startswith("libmpv")]
+    return ", ".join(entries + ["libmpv2 | libmpv1"])
 
 
 def macos():

@@ -12,7 +12,7 @@
 
 - Native Rust offline English-to-Persian translation, Mozilla pinned model, Persian fonts, bilingual modes, sentence merging, prefetching and subtitle continuity.
 - Apple-inspired UI, enlarged top-right window controls/order, smooth timeline, visible fullscreen cursor and native pointer event forwarding.
-- Close stops playback and exits, shared mute/volume works in music, video, mini and PiP.
+- Closing the window hides Unison in the tray (pausing video) when the desktop has one; Quit in the tray menu and `unison close` stop playback and exit completely. Shared mute/volume works in music, video, mini and PiP.
 - Windows fullscreen surface repair stays Windows-only; macOS uses same-desktop simple fullscreen and matching UI state.
 - Legacy libmpv startup/profile, loadfile command syntax and OpenGL ABI compatibility must remain tested.
 - UNISON_PROFILE_DIR / UNISON_IPC_PORT / UNISON_SOCKET isolate native tests. Normal Unison uses its own data directories and port 47826, distinct from the previous app.
@@ -20,7 +20,7 @@
 
 ## Collaboration and publication
 
-- Mohammad Fakhari (Nahur1) maintains this repository; Reza Hashemian (reza-hashemian) is the invited collaborator. Real contributors commit under their own identities. Do not rewrite someone else's work as the owner's.
+- Reza Hashemian (reza-hashemian), who wrote the original player (Nava), and Mohammad Fakhari (Nahur1) are the authors; Nahur1 hosts the repository. Real contributors commit under their own identities. Do not rewrite someone else's work as the owner's.
 - On this owner's computer use local Git identity Nahur1 <51950495+Nahur1@users.noreply.github.com>. Do not add AI identities or AI Co-Authored-By trailers.
 - Hooks must allow real collaborators. Do not reinstate an owner-only author filter across the shared history.
 - Increment Cargo.toml and Cargo.lock version and add docs/releases/X.Y.Z.md for app updates. Push explicit refs to Nahur1/unison; never use --mirror or push unrelated backup refs.

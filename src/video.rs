@@ -12,15 +12,16 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use glow::HasContext;
 
+use crate::libmpv::*;
 use crate::mpv::MpvHandle;
 
 #[repr(C)]
-struct RenderContext {
+pub(crate) struct RenderContext {
     _private: [u8; 0],
 }
 
 #[repr(C)]
-struct RenderParam {
+pub(crate) struct RenderParam {
     kind: c_int,
     data: *mut c_void,
 }
@@ -51,20 +52,6 @@ const PARAM_OPENGL_FBO: c_int = 3;
 const PARAM_FLIP_Y: c_int = 4;
 const PARAM_X11_DISPLAY: c_int = 8;
 const UPDATE_FRAME: u64 = 1;
-
-#[link(name = "mpv")]
-unsafe extern "C" {
-    fn mpv_render_context_create(res: *mut *mut RenderContext, mpv: *mut MpvHandle, params: *mut RenderParam) -> c_int;
-    fn mpv_render_context_set_update_callback(
-        ctx: *mut RenderContext,
-        callback: Option<unsafe extern "C" fn(*mut c_void)>,
-        data: *mut c_void,
-    );
-    fn mpv_render_context_update(ctx: *mut RenderContext) -> u64;
-    fn mpv_render_context_render(ctx: *mut RenderContext, params: *mut RenderParam) -> c_int;
-    fn mpv_render_context_report_swap(ctx: *mut RenderContext);
-    fn mpv_render_context_free(ctx: *mut RenderContext);
-}
 
 /// Set when mpv has a frame for us and a redraw is already on its way.
 static FRAME_WAITING: AtomicBool = AtomicBool::new(false);
