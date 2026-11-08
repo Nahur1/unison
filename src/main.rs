@@ -1741,7 +1741,7 @@ impl Player {
                 if chosen.is_empty() {
                     return "error: no playable files found".into();
                 }
-                self.start_queue(chosen);
+                self.open_files(chosen);
                 self.show_window();
             }
         }
@@ -1835,6 +1835,27 @@ impl Player {
         self.unshuffled = None;
         self.ui().set_shuffle(false);
         self.set_queue(paths, index);
+        self.errors_in_a_row = 0;
+        self.load_current(0.0, true);
+        self.refresh_sessions();
+        self.save();
+    }
+
+    /// Files opened from outside (file manager, terminal) join the session's
+    /// list instead of replacing it. Files already in the list aren't added
+    /// twice; the first one opened starts playing.
+    fn open_files(&mut self, paths: Vec<PathBuf>) {
+        let Some(first) = paths.first().cloned() else { return };
+        for p in paths {
+            if !self.items.iter().any(|it| it.path == p) {
+                self.items.push(Item::new(p));
+            }
+        }
+        self.index = self.items.iter().position(|it| it.path == first);
+        self.note_timer = None;
+        self.ui().set_resume_note(SharedString::new());
+        self.rebuild_model();
+        self.read_queue_tags();
         self.errors_in_a_row = 0;
         self.load_current(0.0, true);
         self.refresh_sessions();
@@ -2495,8 +2516,19 @@ fn run() -> anyhow::Result<()> {
             p.ui().set_mini(true);
         }
         if !fresh.is_empty() {
-            p.open_session(&session, false);
-            p.start_queue(fresh);
+            // Files opened from the file manager join the session's list.
+            // Adding them before the session loads means only the opened
+            // file is loaded (not the old current one first).
+            let mut saved = p.store.load_session(&session).unwrap_or_default();
+            for f in &fresh {
+                if !saved.queue.contains(f) {
+                    saved.queue.push(f.clone());
+                }
+            }
+            saved.index = saved.queue.iter().position(|q| q == &fresh[0]).unwrap_or(0);
+            saved.position = 0.0;
+            p.store.save_session(&session, &saved);
+            p.open_session(&session, true);
         } else {
             p.open_session(&session, args.code || relaunched);
         }
