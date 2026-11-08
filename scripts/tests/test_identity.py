@@ -24,8 +24,14 @@ class IdentityTests(unittest.TestCase):
         installer = (ROOT / "packaging/windows/unison.iss").read_text()
         self.assertIn('AppName=Unison Player', installer)
         self.assertIn('DefaultDirName={autopf}\\Unison', installer)
-        self.assertIn('13A77F89-D5AC-4ECC-A660-FE6C31B12D79', installer)
-        self.assertNotIn('3B1C2C37-4876-48D1-93EC-94014678813D', installer)
+        app_id = re.search(r'^AppId=\{\{([0-9A-F-]+)\}', installer, re.M).group(1)
+        self.assertEqual(app_id, '13A77F89-D5AC-4ECC-A660-FE6C31B12D79')
+        # The previous application's AppId may only locate that application so
+        # setup can uninstall it; it must never become Unison's identity or key.
+        previous_id = '3B1C2C37-4876-48D1-93EC-94014678813D'
+        uses = [line.strip() for line in installer.splitlines() if previous_id in line]
+        self.assertEqual(len(uses), 1, uses)
+        self.assertTrue(uses[0].startswith('KaghazKey = '), uses)
         info = plistlib.loads((ROOT / "packaging/macos/Info.plist").read_bytes())
         self.assertEqual(info['CFBundleExecutable'], 'unison')
         self.assertEqual(info['CFBundleIdentifier'], 'io.github.nahur1.unison')
