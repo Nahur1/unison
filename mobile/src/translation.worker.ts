@@ -1,0 +1,67 @@
+// A classic worker loading wasm-bindgen's "no-modules" build: module workers and
+// import() in workers need WebView 80+, which Android 7-10 phones may not have.
+type Runtime = ((options: { module_or_path: string }) => Promise<unknown>) & {
+  Translator: new (
+    model: Uint8Array,
+    vocab: Uint8Array,
+    lex: Uint8Array,
+  ) => { translate: (text: string) => string };
+};
+declare const importScripts: (...urls: string[]) => void;
+declare const wasm_bindgen: Runtime;
+
+let translator: { translate: (text: string) => string } | undefined;
+self.onmessage = async ({ data }) => {
+  try {
+    if (data.type === "init") {
+      importScripts(new URL("translation/unison.js", data.base).href);
+      await wasm_bindgen({
+        module_or_path: new URL("translation/unison_bg.wasm", data.base).href,
+      });
+      const { Translator } = wasm_bindgen;
+      const base = new URL("translation/", data.base);
+      const entries = await (await fetch(new URL("models.json", base))).json();
+      const cache = await caches.open("unison-model-enfa-v1");
+      const buffers: Uint8Array[] = [];
+      for (const entry of entries) {
+        const url = new URL(entry.name, base);
+        let response = await cache.match(url);
+        if (!response) {
+          response = await fetch(url);
+          if (!response.ok)
+            throw Error("Could not load the offline Persian model");
+        }
+        const bytes = await response.arrayBuffer();
+        const hash = [
+          ...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+        ]
+          .map((x) => x.toString(16).padStart(2, "0"))
+          .join("");
+        if (hash !== entry.sha256)
+          throw Error("Offline model integrity check failed");
+        await cache.put(url, new Response(bytes));
+        buffers.push(new Uint8Array(bytes));
+        self.postMessage({
+          type: "progress",
+          value: buffers.length / entries.length,
+        });
+      }
+      translator = new Translator(buffers[0], buffers[1], buffers[2]);
+      self.postMessage({ type: "ready" });
+    } else if (data.type === "translate") {
+      if (!translator) throw Error("Prepare the offline model first");
+      self.postMessage({
+        type: "done",
+        id: data.id,
+        text: data.text,
+        result: translator.translate(data.text),
+      });
+    }
+  } catch (error) {
+    self.postMessage({
+      type: "error",
+      id: data.id,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+};

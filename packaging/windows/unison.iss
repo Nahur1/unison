@@ -74,6 +74,9 @@ Filename: "{app}\unison.exe"; Flags: nowait; Check: WizardSilent and Relaunch
 [Code]
 const
   UninstallKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{13A77F89-D5AC-4ECC-A660-FE6C31B12D79}_is1';
+  { Kaghaz Player, the app Unison replaces. Only its program files are removed;
+    its data folders are left alone, and Unison never reads them. }
+  KaghazKey = 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{3B1C2C37-4876-48D1-93EC-94014678813D}_is1';
 
 function Relaunch: Boolean;
 begin
@@ -90,6 +93,48 @@ begin
       and RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', Uninstaller);
 end;
 
+{ An installed Kaghaz Player, if any. }
+function KaghazUninstaller(var Uninstaller: String): Boolean;
+begin
+  Result := RegQueryStringValue(HKCU, KaghazKey, 'UninstallString', Uninstaller)
+    or RegQueryStringValue(HKLM, KaghazKey, 'UninstallString', Uninstaller);
+  if Result then
+  begin
+    Uninstaller := RemoveQuotes(Uninstaller);
+    Result := FileExists(Uninstaller);
+  end;
+end;
+
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
+  MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+var
+  Uninstaller: String;
+begin
+  Result := MemoDirInfo;
+  if MemoTasksInfo <> '' then
+  begin
+    if Result <> '' then Result := Result + NewLine + NewLine;
+    Result := Result + MemoTasksInfo;
+  end;
+  if KaghazUninstaller(Uninstaller) then
+  begin
+    if Result <> '' then Result := Result + NewLine + NewLine;
+    Result := Result + 'Kaghaz Player:' + NewLine + Space +
+      'Unison replaces it. Kaghaz Player will be closed and uninstalled.';
+  end;
+end;
+
+{ Unison takes over from Kaghaz Player: close it and uninstall it silently. }
+procedure RemoveKaghaz;
+var
+  Uninstaller: String;
+  Code: Integer;
+begin
+  if not KaghazUninstaller(Uninstaller) then exit;
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM kaghaz.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
 { Only one Unison on the computer: if the new version goes to another folder,
   the old copy is uninstalled first (settings and library are kept). }
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -98,6 +143,7 @@ var
   Code: Integer;
 begin
   if CurStep <> ssInstall then exit;
+  RemoveKaghaz;
   if not PreviousInstall(Dir, Uninstaller) then exit;
   if CompareText(RemoveBackslashUnlessRoot(Dir), RemoveBackslashUnlessRoot(ExpandConstant('{app}'))) = 0 then exit;
   Uninstaller := RemoveQuotes(Uninstaller);

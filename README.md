@@ -203,6 +203,12 @@ Both are authors and maintainers:
 Only these two accounts author commits here; see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Mobile application
+
+Android and iPhone PWA sources are in `mobile/`. See [mobile features, installation,
+builds and test limits](docs/MOBILE.md). The Android APK and PWA ZIP are built
+by GitHub Actions; signed releases and Pages deployment follow a reviewed merge.
+
 ## License
 
 See [LICENSE](LICENSE) and [COPYRIGHT.md](COPYRIGHT.md). Earlier MIT material

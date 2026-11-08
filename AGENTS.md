@@ -17,6 +17,7 @@
 - Legacy libmpv startup/profile, loadfile command syntax and OpenGL ABI compatibility must remain tested.
 - UNISON_PROFILE_DIR / UNISON_IPC_PORT / UNISON_SOCKET isolate native tests. Normal Unison uses its own data directories and port 47826, distinct from the previous app.
 - Keep the new Unison installer AppId stable; never substitute the previous application's AppId or silently share its profile/updater.
+  Owner-requested exception (2026-11-08): setup may read the previous application's AppId only to find Kaghaz Player and uninstall it, telling the user on the ready page; Kaghaz data stays untouched and is never read.
 
 ## Collaboration and publication
 
@@ -25,7 +26,7 @@
 - Hooks must allow real collaborators. Do not reinstate an owner-only author filter across the shared history.
 - Increment Cargo.toml and Cargo.lock version and add docs/releases/X.Y.Z.md for app updates. Push explicit refs to Nahur1/unison; never use --mirror or push unrelated backup refs.
 - Required Actions jobs: Windows x64, Linux amd64, macOS arm64 and Intel. Require unit/publishing/model-inference/native playback and full process-exit checks before publishing.
-- Wait for publish success and verify actual public downloads/checksums before reporting a version released. Do not substitute a local binary for CI output.
+- After appropriate local checks and pushing the change/PR, stop without waiting or polling for GitHub Actions builds or publication. The owner checks Actions independently to conserve usage. Report pushed/queued accurately; do not claim a successful release unless it was actually verified or explicitly requested. Do not substitute a local binary for CI output.
 - Existing ownership/license terms and legacy MIT/dependency notices remain intact. Never infer a transfer of third-party ownership from collaborator access.
 - Source provenance and archived prior release notes are documented in docs/PROJECT_IMPORT.md. External dependency source names are not current product names.
 
@@ -45,3 +46,25 @@ metadata alone is not proof of a person's identity.
 
 Reza: `git config user.email "63972210+reza-hashemian@users.noreply.github.com"`
 Owner: `git config user.email "51950495+Nahur1@users.noreply.github.com"`
+
+## Mobile development
+
+- Shared mobile source is mobile/. Preserve the selected logo, fonts and visual
+  identity while adapting controls to touch/safe areas; do not redesign desktop.
+- Reuse src/mt.rs and src/spm.rs through the standalone WebAssembly crate. Never
+  substitute fake translations or a silent online fallback. Verify actual model
+  inference, subtitle persistence and offline restart.
+- Android music MUST continue with screen lock and MUST stop when the task is
+  removed or Stop and Close is tapped. Native foreground Media3 service owns
+  music queue/timer; do not rely on background WebView timers for music.
+- Keep media private/offline. Avoid base64 media and unbounded file reads at
+  import. Android uses scoped document imports; PWA stores bounded IDB chunks.
+- Stable Android signing key is ignored under .tools/signing; GitHub encrypted
+  secrets sign main builds. Never commit, print, replace or publish the key.
+- Mobile CI and desktop native jobs gate release together. Test Safari media
+  through macOS WebKit CI; Windows WebKit media skips are documented, not passes.
+- Actual phone acceptance has not been performed locally. Keep docs/MOBILE.md
+  honest about preview limitations and desktop/browser differences. Never claim
+  full libmpv or device parity from browser emulation or compilation alone.
+- Owner explicitly requests stopping after local checks and push/PR creation;
+  do not wait/poll Actions builds, deployment or release unless asked to inspect.

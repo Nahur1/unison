@@ -12,6 +12,32 @@ import "fonts/Vazirmatn.ttf";
 
 export { Theme }
 
+// Keep the selected U/play mark beside every in-app product heading.
+component BrandTitle inherits Rectangle {
+    in property <length> icon-size: 28px;
+    in property <length> text-size: 15px;
+    width: root.icon-size + 10px + brand-label.preferred-width;
+    height: max(root.icon-size, brand-label.preferred-height);
+    Image {
+        x: 0;
+        width: root.icon-size;
+        height: root.icon-size;
+        y: (parent.height - self.height) / 2;
+        source: @image-url("icons/unison-128.png");
+        image-fit: contain;
+    }
+    brand-label := Text {
+        x: root.icon-size + 10px;
+        width: self.preferred-width;
+        height: parent.height;
+        text: "Unison Player";
+        color: Theme.fg;
+        font-size: root.text-size;
+        font-weight: 600;
+        vertical-alignment: center;
+    }
+}
+
 export struct TrackRow {
     title: string,
     artist: string,
@@ -1136,13 +1162,9 @@ export component AppWindow inherits Window {
                         spacing: 2px;
                         Rectangle {
                             height: 52px;
-                            Text {
+                            BrandTitle {
                                 x: 8px;
-                                text: "Unison Player";
-                                color: Theme.fg;
-                                font-size: 15px;
-                                font-weight: 600;
-                                vertical-alignment: center;
+                                y: (parent.height - self.height) / 2;
                             }
                         }
                         // Search
@@ -3907,7 +3929,15 @@ export component AppWindow inherits Window {
         if root.show-update-sheet && !root.mini: Sheet {
             card-width: 420px;
             dismiss => { root.show-update-sheet = false; }
-            Text { text: "Unison Player"; color: Theme.fg; font-size: 24px; font-weight: 700; horizontal-alignment: center; }
+            Rectangle {
+                height: 48px;
+                BrandTitle {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    icon-size: 44px;
+                    text-size: 24px;
+                }
+            }
             Text { text: "یونیسون پلیر"; font-family: "Vazirmatn"; color: Theme.muted; font-size: 18px; horizontal-alignment: center; }
             Text { text: "Version " + root.app-version + " · independent local edition"; color: Theme.muted; horizontal-alignment: center; }
             Text { text: "By Reza Hashemian and Mohammad Fakhari (Nahur1)"; color: Theme.fg; font-size: 13px; horizontal-alignment: center; wrap: word-wrap; }

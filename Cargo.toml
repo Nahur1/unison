@@ -1,6 +1,6 @@
 [package]
 name = "unison"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 description = "A calm, glassy music and video player with live offline Persian subtitles (Slint + libmpv)"
 authors = [

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Unison Player</string>
+    <string name="title_activity_main">Unison Player</string>
+    <string name="package_name">io.github.nahur1.unison</string>
+    <string name="custom_url_scheme">io.github.nahur1.unison</string>
+</resources>

@@ -1,0 +1,37 @@
+{
+  "name": "unison",
+  "version": "0.5.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "node scripts/check-version.mjs && tsc -b && vite build && node scripts/service-worker.mjs",
+    "prepare:assets": "node scripts/assets.mjs && node scripts/notices.mjs",
+    "build:translator": "node scripts/build-translator.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "android:sync": "cap sync android",
+    "format": "prettier --write src tests scripts *.ts *.json"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/core": "8.6.0",
+    "lucide-react": "^0.577.0",
+    "music-metadata": "^11.12.3",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0",
+    "@playwright/test": "^1.58.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "binaryen": "^132.0.0",
+    "prettier": "3.9.10",
+    "typescript": "~5.9.3",
+    "vite": "8.3.6",
+    "vitest": "^4.0.18",
+    "wasm-pack": "^0.13.1"
+  }
+}
