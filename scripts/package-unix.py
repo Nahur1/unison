@@ -9,6 +9,7 @@ import plistlib
 import re
 import shutil
 import subprocess
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = re.search(r'^version = "([^"]+)"', (ROOT / "Cargo.toml").read_text(), re.MULTILINE).group(1)
@@ -17,6 +18,18 @@ DIST = ROOT / "dist"
 
 def command(*args):
     subprocess.run(list(map(str, args)), check=True, stdin=subprocess.DEVNULL, timeout=600)
+
+
+def hdiutil_create(*args, attempts=4):
+    """GitHub's macOS runners sometimes answer "hdiutil: create failed -
+    Resource busy" for a moment; retry instead of failing the whole release."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return command("hdiutil", "create", *args)
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            time.sleep(10 * attempt)
 
 
 def macho_rpaths(text):
@@ -166,8 +179,8 @@ def macos():
     command("codesign", "--verify", "--deep", "--strict", app)
     (volume / "Applications").symlink_to("/Applications")
     output = DIST / f"unison-{VERSION}-macos-{arch}.dmg"
-    command("hdiutil", "create", "-volname", "Unison Player", "-srcfolder", volume,
-            "-ov", "-format", "UDZO", output)
+    hdiutil_create("-volname", "Unison Player", "-srcfolder", volume,
+                   "-ov", "-format", "UDZO", output)
     command("hdiutil", "verify", output)
     return output
 

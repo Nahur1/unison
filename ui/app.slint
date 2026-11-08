@@ -1048,6 +1048,40 @@ export component AppWindow inherits Window {
     changed height => { root.window-resized(); }
     changed mini => { root.window-resized(); }
     changed video-browse => { root.window-resized(); }
+    // Shortcuts must work with the Persian keyboard layout too: the same key
+    // then types a Persian letter (F gives ب, T gives ف ...). Both the legacy
+    // Windows "Persian" and "Persian (Standard)" layouts are covered.
+    pure function shortcut-key(t: string) -> string {
+        if (t == "f" || t == "F" || t == "ب") { return "f"; }
+        if (t == "v" || t == "V" || t == "ر") { return "v"; }
+        if (t == "t" || t == "T" || t == "ف") { return "t"; }
+        if (t == "m" || t == "M" || t == "پ" || t == "ئ") { return "m"; }
+        if (t == "n" || t == "N" || t == "د") { return "n"; }
+        if (t == "l" || t == "L" || t == "م") { return "l"; }
+        if (t == "a" || t == "A" || t == "ش") { return "a"; }
+        if (t == "e" || t == "E" || t == "ث") { return "e"; }
+        if (t == "y" || t == "Y" || t == "غ") { return "y"; }
+        if (t == "b" || t == "B" || t == "ذ") { return "b"; }
+        if (t == "p" || t == "P" || t == "ح") { return "p"; }
+        if (t == "o" || t == "O" || t == "خ") { return "o"; }
+        if (t == "," || t == "و") { return ","; }
+        return t;
+    }
+    // Shortcuts live on the "keys" focus scope. Whenever a panel, text box or
+    // view closes, give the keyboard back to it; otherwise the shortcuts stay
+    // dead (focus left in the search box, or on a text box that no longer exists).
+    changed show-notes => { if !self.show-notes { keys.focus(); } }
+    changed show-settings => { if !self.show-settings { keys.focus(); } }
+    changed show-equalizer => { if !self.show-equalizer { keys.focus(); } }
+    changed show-link-sheet => { if !self.show-link-sheet { keys.focus(); } }
+    changed show-open-sheet => { if !self.show-open-sheet { keys.focus(); } }
+    changed show-delete-sheet => { if !self.show-delete-sheet { keys.focus(); } }
+    changed show-update-sheet => { if !self.show-update-sheet { keys.focus(); } }
+    changed show-translation => { if !self.show-translation { keys.focus(); } }
+    changed show-video-queue => { keys.focus(); }
+    changed video-mode => { keys.focus(); }
+    changed current-index => { keys.focus(); }
+    changed view => { if self.view != "search" { keys.focus(); } }
     init => {
         Theme.dark = self.dark;
         Theme.glass = self.glass;
@@ -1097,10 +1131,10 @@ export component AppWindow inherits Window {
 
         keys := FocusScope {
             key-pressed(e) => {
-                if e.modifiers.control && (e.text == "o" || e.text == "O") { root.open-folder(); return accept; }
-                if e.modifiers.control && e.text == "," { root.show-settings = true; return accept; }
-                if e.modifiers.control && (e.text == "l" || e.text == "L") { root.show-link-sheet = true; return accept; }
-                if e.modifiers.control && (e.text == "m" || e.text == "M") { root.toggle-mini(); return accept; }
+                if e.modifiers.control && root.shortcut-key(e.text) == "o" { root.open-folder(); return accept; }
+                if e.modifiers.control && root.shortcut-key(e.text) == "," { root.show-settings = true; return accept; }
+                if e.modifiers.control && root.shortcut-key(e.text) == "l" { root.show-link-sheet = true; return accept; }
+                if e.modifiers.control && root.shortcut-key(e.text) == "m" { root.toggle-mini(); return accept; }
                 if e.text == Key.Escape && root.player-fullscreen { root.toggle-fullscreen(); return accept; }
                 if (e.text == Key.Escape || e.text == Key.Backspace) && (root.view == "album" || root.view == "artist")
                     && !root.show-settings && !root.show-open-sheet && !root.show-equalizer {
@@ -1111,34 +1145,34 @@ export component AppWindow inherits Window {
                 if root.show-delete-sheet && e.text == Key.Return { root.confirm-delete(); return accept; }
                 if root.show-open-sheet || root.show-settings || root.show-equalizer || root.show-link-sheet || root.show-delete-sheet || root.show-update-sheet { return reject; }
                 if e.text == Key.Delete && root.has-track { root.row-action("queue", root.current-index, "trash"); return accept; }
-                if root.show-video && (e.text == "f" || e.text == "F") { root.toggle-fullscreen(); return accept; }
-                if root.video-mode && (e.text == "v" || e.text == "V") { root.video-browse = !root.video-browse; return accept; }
+                if root.show-video && root.shortcut-key(e.text) == "f" { root.toggle-fullscreen(); return accept; }
+                if root.video-mode && root.shortcut-key(e.text) == "v" { root.video-browse = !root.video-browse; return accept; }
                 if root.video-mode && e.text == Key.Escape && root.player-fullscreen { root.toggle-fullscreen(); return accept; }
                 if e.text == " " { root.play-pause(); return accept; }
                 // Shift: one second, for precise checking. Otherwise five.
                 if e.text == Key.RightArrow { root.seek(Math.min(root.position + (e.modifiers.shift ? 1 : 5), root.duration)); return accept; }
                 if e.text == Key.LeftArrow { root.seek(Math.max(root.position - (e.modifiers.shift ? 1 : 5), 0)); return accept; }
                 if root.video-mode && e.text == "." { root.frame-step(true); return accept; }
-                if root.video-mode && e.text == "," { root.frame-step(false); return accept; }
-                if root.video-mode && (e.text == "t" || e.text == "T") { root.subs-cycle-mode(); return accept; }
+                if root.video-mode && root.shortcut-key(e.text) == "," { root.frame-step(false); return accept; }
+                if root.video-mode && root.shortcut-key(e.text) == "t" { root.subs-cycle-mode(); return accept; }
                 if e.text == Key.UpArrow { root.set-volume(Math.min(root.volume + 5, 100)); return accept; }
                 if e.text == Key.DownArrow { root.set-volume(Math.max(root.volume - 5, 0)); return accept; }
-                if e.text == "m" || e.text == "M" { root.toggle-mute(); return accept; }
-                if e.text == "n" || e.text == "N" { root.next(); return accept; }
-                if e.text == "l" || e.text == "L" { root.heart-current(); return accept; }
-                if e.text == "a" || e.text == "A" { root.ab-loop(); return accept; }
-                if (e.text == "e" || e.text == "E") && !root.mini { root.show-equalizer = true; return accept; }
-                if (e.text == "y" || e.text == "Y") && root.has-track {
+                if root.shortcut-key(e.text) == "m" { root.toggle-mute(); return accept; }
+                if root.shortcut-key(e.text) == "n" { root.next(); return accept; }
+                if root.shortcut-key(e.text) == "l" { root.heart-current(); return accept; }
+                if root.shortcut-key(e.text) == "a" { root.ab-loop(); return accept; }
+                if root.shortcut-key(e.text) == "e" && !root.mini { root.show-equalizer = true; return accept; }
+                if root.shortcut-key(e.text) == "y" && root.has-track {
                     root.show-lyrics = !root.show-lyrics;
                     root.lyrics-toggled(root.show-lyrics);
                     return accept;
                 }
-                if root.show-video && !root.mini && (e.text == "b" || e.text == "B") {
+                if root.show-video && !root.mini && root.shortcut-key(e.text) == "b" {
                     root.show-notes = true;
                     root.show-video-queue = false;
                     return accept;
                 }
-                if e.text == "p" { root.prev(); return accept; }
+                if root.shortcut-key(e.text) == "p" { root.prev(); return accept; }
                 reject
             }
 
@@ -1196,6 +1230,7 @@ export component AppWindow inherits Window {
                                         single-line: true;
                                         selection-background-color: Theme.accent.with-alpha(0.35);
                                         edited => { root.search-changed(self.text); }
+                                        accepted => { keys.focus(); }
                                         key-pressed(e) => {
                                             if e.text == Key.Escape {
                                                 self.text = "";
