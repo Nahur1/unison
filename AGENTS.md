@@ -17,6 +17,7 @@
 - Legacy libmpv startup/profile, loadfile command syntax and OpenGL ABI compatibility must remain tested.
 - UNISON_PROFILE_DIR / UNISON_IPC_PORT / UNISON_SOCKET isolate native tests. Normal Unison uses its own data directories and port 47826, distinct from the previous app.
 - Keep the new Unison installer AppId stable; never substitute the previous application's AppId or silently share its profile/updater.
+  Owner-requested exception (2026-11-08): setup may read the previous application's AppId only to find Kaghaz Player and uninstall it, telling the user on the ready page; Kaghaz data stays untouched and is never read.
 
 ## Collaboration and publication
 
