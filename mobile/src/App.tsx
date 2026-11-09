@@ -49,10 +49,18 @@ import type {
 } from "./types";
 import { defaultSettings, BANDS, PRESETS } from "./types";
 import * as db from "./storage";
-import { parseSubtitles, activeCues, formatTime, exportSrt } from "./subtitles";
+import {
+  activeCues,
+  bestEmbeddedTrack,
+  decodeSubtitle,
+  exportSrt,
+  formatTime,
+  mediaBaseName,
+  parseCaptionFile,
+} from "./subtitles";
 import { OfflineTranslator } from "./translation";
 import { Equalizer } from "./equalizer";
-import { Native, native, nativeUrl } from "./native";
+import { Native, native, nativeUrl, type NativeSubtitleFile } from "./native";
 import { parseBlob } from "music-metadata";
 const translator = new OfflineTranslator(),
   equalizer = new Equalizer();
@@ -180,13 +188,20 @@ export default function App() {
     settingsRef = useRef(settings),
     queueRef = useRef(queue),
     endedRef = useRef(() => {}),
+    scanEmbeddedRef = useRef((_track: Track, _quiet?: boolean) =>
+      Promise.resolve(),
+    ),
     generation = useRef(0),
     saveAt = useRef(0),
     sleepTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
     isNativeAudio = useRef(false),
     sourceUrl = useRef(""),
     wantsPlay = useRef(false),
-    translationBusy = useRef(false);
+    translationBusy = useRef(false),
+    scanning = useRef(new Set<string>()),
+    chromeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [chrome, setChrome] = useState(true),
+    [pipMode, setPipMode] = useState(false);
   useEffect(() => {
     if (!sheet) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -368,7 +383,8 @@ export default function App() {
         if (currentRef.current?.id === track.id && captions) {
           setCues(captions.cues);
           setTranslations(captions.translations);
-        }
+        } else if (!captions && !track.scanned)
+          void scanEmbeddedRef.current(track, true);
       } catch (e) {
         toast(errorText(e));
       }
@@ -551,6 +567,47 @@ export default function App() {
       seek(d.seekTime || 0),
     );
   }, [current, step, seek]);
+  const showChrome = useCallback(() => {
+    setChrome(true);
+    clearTimeout(chromeTimer.current);
+    chromeTimer.current = setTimeout(() => {
+      if (!media.current?.paused) setChrome(false);
+    }, 3000);
+  }, []);
+  useEffect(() => {
+    // Fullscreen controls fade away while a video plays so they never sit on
+    // the subtitles; a touch brings them back for three seconds.
+    if (!full || !playing) {
+      clearTimeout(chromeTimer.current);
+      setChrome(true);
+    } else showChrome();
+    return () => clearTimeout(chromeTimer.current);
+  }, [full, playing, showChrome]);
+  useEffect(() => {
+    if (!native) return;
+    const handle = Native.addListener("pip", ({ active }) => {
+      setPipMode(active);
+      document.documentElement.classList.toggle("pip-mode", active);
+    });
+    return () => {
+      void handle.then((h) => h.remove());
+    };
+  }, []);
+  useEffect(() => {
+    if (!native) return;
+    const v = media.current as HTMLVideoElement | null;
+    void Native.setAutoPictureInPicture({
+      enabled: playing && current?.kind === "video",
+      width: v?.videoWidth || 16,
+      height: v?.videoHeight || 9,
+    }).catch(() => {});
+  }, [playing, current?.kind]);
+  useEffect(() => {
+    // Never keep a hidden page fullscreen, whatever changed the tab.
+    if (tab !== "now" && document.fullscreenElement)
+      void document.exitFullscreen().catch(() => {});
+    if (tab !== "now") setFull(false);
+  }, [tab]);
   useEffect(() => {
     const sync = () => setFull(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", sync);
@@ -636,7 +693,8 @@ export default function App() {
     setBusy(true);
     try {
       const result = await Native.pickFiles(),
-        next = [...tracksRef.current];
+        next = [...tracksRef.current],
+        added: Track[] = [];
       for (const file of result.files) {
         if (next.some((t) => t.name === file.name && t.size === file.size)) {
           await Native.removeFile({ path: file.path });
@@ -664,10 +722,41 @@ export default function App() {
         };
         await db.put("tracks", track.id, track);
         next.push(track);
+        added.push(track);
       }
       setTracks(next);
+      tracksRef.current = next;
       setQueue(next.map((t) => t.id));
-      toast(`${result.files.length} files selected`);
+      const subtitles = result.subtitles || [];
+      let attached = 0;
+      for (const file of subtitles) {
+        const base = mediaBaseName(file.name),
+          videos = next.filter((t) => t.kind === "video"),
+          target =
+            videos.find((t) => mediaBaseName(t.name) === base) ||
+            (added.filter((t) => t.kind === "video").length === 1
+              ? added.find((t) => t.kind === "video")
+              : !added.length
+                ? currentRef.current
+                : undefined);
+        if (!target) continue;
+        try {
+          await attachCaptions(target.id, nativeCaptions(file), file.name);
+          attached++;
+        } catch (e) {
+          toast(errorText(e));
+        }
+      }
+      toast(
+        (result.files.length || !attached
+          ? `${result.files.length} files selected`
+          : "Subtitles") +
+          (attached ? ` · ${attached} subtitle files attached` : "") +
+          (subtitles.length > attached
+            ? ` · ${subtitles.length - attached} subtitle files had no matching video`
+            : ""),
+      );
+      for (const t of added) if (t.kind === "video") void scanEmbedded(t, true);
     } catch (e) {
       toast(errorText(e));
     } finally {
@@ -700,50 +789,27 @@ export default function App() {
       toast(errorText(e));
     }
   }
+  async function attachCaptions(id: string, parsed: Cue[], label: string) {
+    if (!parsed.length) throw Error(`No timed subtitles found in ${label}.`);
+    await db.put("captions", id, { cues: parsed, translations: {} });
+    if (currentRef.current?.id === id) {
+      generation.current++;
+      setCues(parsed);
+      setTranslations({});
+    }
+  }
   async function readCaptions(file: File) {
     if (!current) {
       toast("Choose a song or video first.");
       return;
     }
     try {
-      const id = current.id,
-        bytes = new Uint8Array(await file.arrayBuffer()),
-        input = new TextDecoder(
-          bytes[0] === 255 && bytes[1] === 254
-            ? "utf-16le"
-            : bytes[0] === 254 && bytes[1] === 255
-              ? "utf-16be"
-              : "utf-8",
-        ).decode(bytes);
-      let parsed: Cue[];
-      if (file.name.toLowerCase().endsWith(".lrc")) {
-        parsed = input
-          .split("\n")
-          .flatMap((line) => {
-            const m = line.match(/\[(\d+):(\d+(?:\.\d+)?)\](.*)/);
-            return m
-              ? [
-                  {
-                    start: Number(m[1]) * 60 + Number(m[2]),
-                    end: 0,
-                    text: m[3].trim(),
-                  },
-                ]
-              : [];
-          })
-          .sort((a, b) => a.start - b.start);
-        parsed = parsed.map((c, i) => ({
-          ...c,
-          end: parsed[i + 1]?.start || duration || c.start + 8,
-        }));
-      } else parsed = parseSubtitles(input);
-      if (!parsed.length) throw Error("No timed subtitles found.");
-      await db.put("captions", id, { cues: parsed, translations: {} });
-      if (currentRef.current?.id === id) {
-        generation.current++;
-        setCues(parsed);
-        setTranslations({});
-      }
+      const parsed = parseCaptionFile(
+        file.name,
+        decodeSubtitle(new Uint8Array(await file.arrayBuffer())),
+        duration,
+      );
+      await attachCaptions(current.id, parsed, file.name);
       toast(`${parsed.length} cues loaded`);
     } catch (e) {
       toast(errorText(e));
@@ -751,14 +817,72 @@ export default function App() {
       if (subtitleInput.current) subtitleInput.current.value = "";
     }
   }
-  async function prepare() {
+  function nativeCaptions(file: NativeSubtitleFile) {
+    const bytes = Uint8Array.from(atob(file.data), (c) => c.charCodeAt(0));
+    return parseCaptionFile(file.name, decodeSubtitle(bytes), duration);
+  }
+  async function chooseSubtitleFile() {
+    if (!native) {
+      subtitleInput.current?.click();
+      return;
+    }
+    // Android's picker cannot filter by .srt (it has no registered MIME type),
+    // so the native picker lists every file and the name decides.
+    const track = currentRef.current;
+    if (!track) {
+      toast("Choose a song or video first.");
+      return;
+    }
+    try {
+      const result = await Native.pickSubtitles();
+      for (const f of result.files)
+        await Native.removeFile({ path: f.path }).catch(() => {});
+      const file = result.subtitles?.[0];
+      if (!file) {
+        if (result.files.length)
+          toast("Choose a subtitle file: SRT, VTT, ASS, SSA or LRC.");
+        return;
+      }
+      const parsed = nativeCaptions(file);
+      await attachCaptions(track.id, parsed, file.name);
+      toast(`${parsed.length} cues loaded`);
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+  scanEmbeddedRef.current = (track, quiet) => scanEmbedded(track, quiet);
+  async function scanEmbedded(track: Track, quiet = false) {
+    if (!native || track.kind !== "video" || !track.nativePath) return;
+    if (scanning.current.has(track.id)) return;
+    scanning.current.add(track.id);
+    try {
+      const { tracks: found } = await Native.extractSubtitles({
+        path: track.nativePath,
+      });
+      const latest = tracksRef.current.find((t) => t.id === track.id);
+      if (latest) await persistTrack({ ...latest, scanned: true });
+      const best = bestEmbeddedTrack(found);
+      if (!best || (await db.get<CaptionFile>("captions", track.id))) return;
+      await attachCaptions(track.id, best.cues, track.name);
+      if (!quiet || currentRef.current?.id === track.id)
+        toast(
+          `${best.cues.length} subtitles found inside ${track.title}` +
+            (found.length > 1 ? ` (${found.length} tracks)` : ""),
+        );
+    } catch (e) {
+      if (!quiet) toast(errorText(e));
+    } finally {
+      scanning.current.delete(track.id);
+    }
+  }
+  async function prepare(quiet = false) {
     setModelState("loading");
     translator.onProgress = setModelProgress;
     await navigator.storage?.persist?.();
     try {
       await translator.prepare();
       setModelState("ready");
-      toast("Persian translation is ready on this device.");
+      if (!quiet) toast("Persian translation is ready on this device.");
       return true;
     } catch (e) {
       setModelState("failed");
@@ -787,6 +911,17 @@ export default function App() {
       toast(errorText(e));
     }
   }
+  useEffect(() => {
+    // Live translation starts by itself, like on the desktop: the model ships
+    // with the app, so no button press or connection is needed.
+    if (
+      modelState === "idle" &&
+      cues.length &&
+      !["off", "original"].includes(settings.subtitleMode)
+    )
+      void prepare(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelState, cues, settings.subtitleMode]);
   useEffect(() => {
     if (
       modelState !== "ready" ||
@@ -841,11 +976,32 @@ export default function App() {
       setFull(!full);
     }
   }
+  async function leaveFullscreen() {
+    setFull(false);
+    if (document.fullscreenElement)
+      await document.exitFullscreen().catch(() => {});
+  }
+  async function openSubtitles() {
+    // The stage is the fullscreen element: hiding its page while it is still
+    // fullscreen leaves an empty layer above the app that swallows every touch.
+    await leaveFullscreen();
+    setTab("subtitles");
+  }
   async function pip() {
     try {
       const e = media.current as HTMLVideoElement & {
         webkitSetPresentationMode?: (mode: string) => void;
       };
+      if (native) {
+        // The Android WebView has no web Picture in Picture; the whole
+        // activity shrinks instead and the stage fills the small window.
+        const v = media.current as HTMLVideoElement | null;
+        await Native.pictureInPicture({
+          width: v?.videoWidth || 16,
+          height: v?.videoHeight || 9,
+        });
+        return;
+      }
       if (document.pictureInPictureElement)
         await document.exitPictureInPicture();
       else if (e.requestPictureInPicture) await e.requestPictureInPicture();
@@ -1065,7 +1221,7 @@ export default function App() {
             <WifiOff size={16} />
             Made for offline moments
           </span>
-          <small>Unison Player · 0.5.0</small>
+          <small>Unison Player · 0.5.1</small>
         </div>
       </aside>
       <main>
@@ -1108,7 +1264,19 @@ export default function App() {
           </div>
           <div
             ref={videoStage}
-            className={`player-stage ${current?.kind === "video" ? "is-video" : ""} ${full ? "expanded" : ""}`}
+            className={`player-stage ${current?.kind === "video" ? "is-video" : ""} ${full ? "expanded" : ""} ${(full && !chrome) || pipMode ? "chrome-hidden" : ""}`}
+            onPointerDown={(e) => {
+              if (!full) return;
+              const target = e.target as HTMLElement;
+              const onControl = !!target.closest(
+                ".fullscreen-controls, .video-actions",
+              );
+              if (onControl || !chrome) showChrome();
+              else if (playing) {
+                clearTimeout(chromeTimer.current);
+                setChrome(false);
+              }
+            }}
           >
             <MediaTag
               ref={(node: HTMLVideoElement | HTMLAudioElement | null) => {
@@ -1188,10 +1356,7 @@ export default function App() {
                 <IconButton
                   icon={Captions}
                   label="Subtitle settings"
-                  onClick={() => {
-                    setFull(false);
-                    setTab("subtitles");
-                  }}
+                  onClick={() => void openSubtitles()}
                   active={settings.subtitleMode !== "off"}
                 />
                 <IconButton
@@ -1565,7 +1730,7 @@ export default function App() {
               </p>
               <button
                 className="soft-button full-width"
-                onClick={() => subtitleInput.current?.click()}
+                onClick={() => void chooseSubtitleFile()}
                 disabled={!current}
               >
                 <FolderOpen size={18} />
@@ -1842,7 +2007,7 @@ export default function App() {
             <div className="about-card">
               <Brand />
               <p>Music, films, and a world of understanding.</p>
-              <small>Version 0.5.0 · Mobile preview</small>
+              <small>Version 0.5.1 · Mobile preview</small>
               <button
                 className="text-button"
                 onClick={() => {
@@ -2040,7 +2205,7 @@ export default function App() {
               <>
                 <button
                   className="tool-row"
-                  onClick={() => subtitleInput.current?.click()}
+                  onClick={() => void chooseSubtitleFile()}
                 >
                   <FileText />
                   Import timed lyrics or subtitles

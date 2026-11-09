@@ -141,9 +141,7 @@ test("real WASM translation, subtitle continuity and offline restart", async ({
     .getByRole("button", { name: "Subtitles", exact: true })
     .click();
   await expect(page.locator(".cue-list em")).toHaveCount(2);
-  await page
-    .getByRole("button", { name: /Prepare offline translation/ })
-    .click();
+  // Subtitles with Persian shown start the offline engine by themselves.
   await expect(page.getByText("Ready offline", { exact: true })).toBeVisible({
     timeout: 60000,
   });

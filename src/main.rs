@@ -1550,6 +1550,13 @@ impl Player {
     /// Closing the window keeps music playing in the tray. Without a tray it
     /// quits, like Quit in the tray menu or `unison close`.
     fn close_window(&mut self) {
+        // A playing song stays on screen in the mini player, so it's clear
+        // Unison is still running; closing the mini player hides it too.
+        if self.playing && !self.is_video && !self.mini {
+            self.set_mini(true);
+            self.save();
+            return;
+        }
         if !self.close_to_tray {
             self.quit_app();
             return;

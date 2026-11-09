@@ -817,7 +817,7 @@ input[type="range"]::-moz-range-thumb {
   padding: 6px;
 }
 .segmented button.selected {
-  background: rgba(182, 196, 230, 0.20);
+  background: rgba(182, 196, 230, 0.2);
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   color: var(--fg);
   box-shadow: 0 2px 5px #0002;
@@ -1370,6 +1370,65 @@ input[type="range"]::-moz-range-thumb {
   top: calc(12px + env(safe-area-inset-top, 0px));
   right: 12px;
 }
+.fullscreen-controls,
+.expanded .video-actions {
+  transition:
+    opacity 0.25s ease,
+    visibility 0.25s;
+}
+.chrome-hidden .fullscreen-controls,
+.chrome-hidden .video-actions {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.expanded.chrome-hidden .caption-overlay {
+  bottom: calc(6% + var(--safe-bottom));
+}
+.expanded .caption-overlay {
+  transition: bottom 0.25s ease;
+}
+/* Android mini player: the whole app shrinks, so only the video stays. */
+.pip-mode body {
+  overflow: hidden;
+}
+.pip-mode .app-shell > :not(main),
+.pip-mode main > :not(.now-page),
+.pip-mode .now-page > :not(.player-stage),
+.pip-mode .toast {
+  display: none !important;
+}
+.pip-mode .now-page {
+  display: block !important;
+}
+.pip-mode .now-page .player-stage {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none;
+  aspect-ratio: auto !important;
+  background: #000;
+  border-radius: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pip-mode .video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.pip-mode .caption-overlay {
+  bottom: 4%;
+  font-size: 11px !important;
+}
 @media (min-width: 760px) {
   .desktop-sidebar {
     display: flex;
@@ -1608,7 +1667,9 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 /* Without backdrop blur (WebView < 76) the bars would show the page through them. */
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+@supports not (
+  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
+) {
   .bottom-nav,
   .fullscreen-controls {
     background: var(--bg);

@@ -23,8 +23,33 @@ export interface NativeState {
   ended: boolean;
   trackId: string;
 }
+export interface NativeSubtitleFile {
+  name: string;
+  data: string;
+}
+export interface NativeSubtitleTrack {
+  language: string;
+  label: string;
+  cues: { start: number; end: number; text: string }[];
+}
 export interface NativeMedia {
-  pickFiles(): Promise<{ files: NativeFile[] }>;
+  pickFiles(): Promise<{
+    files: NativeFile[];
+    subtitles?: NativeSubtitleFile[];
+  }>;
+  pickSubtitles(): Promise<{
+    files: NativeFile[];
+    subtitles?: NativeSubtitleFile[];
+  }>;
+  extractSubtitles(options: {
+    path: string;
+  }): Promise<{ tracks: NativeSubtitleTrack[] }>;
+  pictureInPicture(options: { width: number; height: number }): Promise<void>;
+  setAutoPictureInPicture(options: {
+    enabled: boolean;
+    width: number;
+    height: number;
+  }): Promise<void>;
   play(options: {
     uri: string;
     title: string;
@@ -51,6 +76,10 @@ export interface NativeMedia {
   addListener(
     event: "state",
     listener: (state: NativeState) => void,
+  ): Promise<PluginListenerHandle>;
+  addListener(
+    event: "pip",
+    listener: (state: { active: boolean }) => void,
   ): Promise<PluginListenerHandle>;
 }
 export const Native = registerPlugin<NativeMedia>("UnisonMedia");

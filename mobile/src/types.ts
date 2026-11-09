@@ -14,6 +14,8 @@ export interface Track {
   stored?: boolean;
   nativePath?: string;
   artwork?: Blob;
+  /** Embedded subtitle tracks were already looked for (Android). */
+  scanned?: boolean;
 }
 export interface Cue {
   start: number;
