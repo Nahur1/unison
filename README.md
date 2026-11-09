@@ -105,8 +105,10 @@ Music pauses when the screen locks and resumes when you unlock (GNOME and KDE).
 On Windows, macOS, KDE and Ubuntu, Unison has a tray / menu-bar icon with
 play/pause, next, previous, mini player, show and **Quit**.
 
-- **Closing the window** keeps the music playing in the tray (a playing video
-  pauses). Click the tray icon to bring the window back.
+- **Closing the window** while a song plays switches to the mini player, so
+  you can see Unison is still running. Closing the mini player (or the window
+  when nothing plays) keeps Unison in the tray; a playing video pauses. Click
+  the tray icon to bring the window back.
 - **Quit** in the tray menu, or `unison close`, stops playback and exits
   completely.
 

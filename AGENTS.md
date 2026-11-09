@@ -12,7 +12,7 @@
 
 - Native Rust offline English-to-Persian translation, Mozilla pinned model, Persian fonts, bilingual modes, sentence merging, prefetching and subtitle continuity.
 - Apple-inspired UI, enlarged top-right window controls/order, smooth timeline, visible fullscreen cursor and native pointer event forwarding.
-- Closing the window hides Unison in the tray (pausing video) when the desktop has one; Quit in the tray menu and `unison close` stop playback and exit completely. Shared mute/volume works in music, video, mini and PiP.
+- Closing the window while a song plays switches to the mini player; otherwise (or closing the mini player) it hides Unison in the tray (pausing video) when the desktop has one; Quit in the tray menu and `unison close` stop playback and exit completely. Shared mute/volume works in music, video, mini and PiP.
 - Windows fullscreen surface repair stays Windows-only; macOS uses same-desktop simple fullscreen and matching UI state.
 - Legacy libmpv startup/profile, loadfile command syntax and OpenGL ABI compatibility must remain tested.
 - UNISON_PROFILE_DIR / UNISON_IPC_PORT / UNISON_SOCKET isolate native tests. Normal Unison uses its own data directories and port 47826, distinct from the previous app.
