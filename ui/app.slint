@@ -1,7 +1,7 @@
 import { ListView, Palette } from "std-widgets.slint";
 import {
     Theme, Icons, Icon, IconButton, PlayButton, NSlider, Segmented, Switch, BandSlider,
-    PrimaryButton, GhostButton, TrafficLights, GlassCard, SectionLabel
+    PrimaryButton, GhostButton, TrafficLights, GlassCard, SectionLabel, MiniSeek
 } from "widgets.slint";
 
 import "fonts/Inter-Regular.ttf";
@@ -57,6 +57,14 @@ export struct LibRow {
     duration: string,
     favorite: bool,
     current: bool,
+    selected: bool,
+}
+
+// A folder made inside Unison ("Relax", "Pop"…).
+export struct FolderItem {
+    id: int,
+    name: string,
+    count: string,
 }
 
 export struct AlbumCell {
@@ -277,13 +285,85 @@ component QueueRow inherits Rectangle {
 }
 
 // One song in a library list.
+// A text box in the sidebar for naming something: Enter keeps it, Esc gives up.
+component NameField inherits Rectangle {
+    in property <string> icon;
+    in property <string> placeholder;
+    in property <string> initial;
+    callback done(string);
+    callback cancelled();
+    height: 32px;
+    border-radius: 9px;
+    background: Theme.faint;
+    border-width: 1.5px;
+    border-color: Theme.accent.with-alpha(0.7);
+    // Opened from a popup menu, the menu hands the keyboard back to where it
+    // was as it closes: take it again once that has happened.
+    Timer {
+        interval: 30ms;
+        running: true;
+        triggered => {
+            input.focus();
+            self.running = false;
+        }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 10px;
+        Icon {
+            icon: root.icon;
+            tint: Theme.accent;
+            width: 18px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+        }
+        Rectangle {
+            input := TextInput {
+                width: 100%;
+                text: root.initial;
+                vertical-alignment: center;
+                color: Theme.fg;
+                font-size: 13.5px;
+                single-line: true;
+                selection-background-color: Theme.accent.with-alpha(0.35);
+                init => {
+                    self.focus();
+                    self.select-all();
+                }
+                accepted => { root.done(self.text); }
+                key-pressed(e) => {
+                    if e.text == Key.Escape {
+                        root.cancelled();
+                        return accept;
+                    }
+                    reject
+                }
+            }
+            if input.text == "": Text {
+                x: 0;
+                text: root.placeholder;
+                color: Theme.muted;
+                font-size: 13.5px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
 component SongRow inherits Rectangle {
     in property <LibRow> song;
     in property <int> number;
     in property <bool> wide;
+    // Choosing rows (checkboxes) instead of playing them.
+    in property <bool> selecting;
+    // Folders it can be added to, and whether this list is one of them.
+    in property <[FolderItem]> folders;
+    in property <bool> in-folder;
     callback clicked();
     callback heart();
-    callback action(string); // "next", "folder", "trash"
+    callback action(string); // "next", "folder", "trash", "unfolder"
+    callback add-to-folder(int); // folder id
     height: 48px;
     border-radius: 10px;
     property <bool> hot: ta.has-hover || trash-btn.hovered || heart-btn.hovered;
@@ -299,6 +379,18 @@ component SongRow inherits Rectangle {
                 title: "Show in Folder";
                 activated => { root.action("folder"); }
             }
+            Menu {
+                title: "Add to Folder";
+                enabled: root.folders.length > 0;
+                for f in root.folders: MenuItem {
+                    title: f.name;
+                    activated => { root.add-to-folder(f.id); }
+                }
+            }
+            if root.in-folder: MenuItem {
+                title: "Remove from This Folder";
+                activated => { root.action("unfolder"); }
+            }
             MenuSeparator { }
             MenuItem {
                 title: "Move to Trash…";
@@ -313,6 +405,24 @@ component SongRow inherits Rectangle {
             padding-left: 10px;
             padding-right: 6px;
             spacing: 12px;
+            if root.selecting: Rectangle {
+                width: 20px;
+                Rectangle {
+                    width: 18px;
+                    height: 18px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 5px;
+                    background: root.song.selected ? Theme.accent : transparent;
+                    border-width: root.song.selected ? 0px : 1.5px;
+                    border-color: Theme.muted;
+                    if root.song.selected: Icon {
+                        icon: Icons.check;
+                        tint: Theme.base;
+                        width: 14px;
+                        height: 14px;
+                    }
+                }
+            }
             Rectangle {
                 width: 26px;
                 if root.song.current: Icon {
@@ -851,6 +961,8 @@ export component AppWindow inherits Window {
     in property <bool> shuffle;
     in property <int> repeat-mode; // 0 off, 1 all, 2 one
     in property <string> resume-note;
+    // A short message at the bottom of the window ("Added 3 items to Relax").
+    in property <string> toast;
 
     // Queue and sessions
     in property <[TrackRow]> queue;
@@ -937,6 +1049,15 @@ export component AppWindow inherits Window {
     in-out property <length> artists-scroll;
     out property <int> album-columns: Math.max(2, Math.floor((root.width - 236px - 56px + 20px) / 188px));
     property <string> view-kind: view == "albums" ? "albums" : view == "artists" ? "artists" : "songs";
+    // Folders made in Unison, and choosing rows to put into them.
+    in property <[FolderItem]> folders;
+    in property <int> view-folder: -1; // the folder on screen when view == "folder"
+    in-out property <bool> select-mode;
+    in property <int> selected-count;
+    in-out property <bool> naming-folder;
+    // The new folder being named should receive the chosen rows.
+    in-out property <bool> new-folder-takes-selection;
+    in-out property <int> renaming-folder: -1;
 
     // Mini player: a small always-on-top bar for coding.
     in property <bool> mini;
@@ -1005,6 +1126,15 @@ export component AppWindow inherits Window {
     callback album-columns-changed(int);
     callback go-back();
     callback row-action(string, int, string); // where, row, what
+    callback show-folder(int);
+    callback create-folder(string, bool); // name, add the chosen rows to it
+    callback folder-action(int, string); // id, "delete" | "rename:<name>"
+    callback toggle-select(int);
+    callback select-all(bool);
+    callback add-selected-to-folder(int);
+    callback add-row-to-folder(int, int); // row, folder id
+    callback remove-selected-from-folder();
+    callback folder-add-files(bool); // false = pick files, true = a whole folder
     callback confirm-delete();
     callback window-resized();
     callback open-link(string, bool);
@@ -1286,24 +1416,7 @@ export component AppWindow inherits Window {
                             clicked => { root.show-view(item.v); }
                         }
                         Rectangle { height: 8px; }
-                        HorizontalLayout {
-                            height: 24px;
-                            padding-left: 10px;
-                            padding-right: 4px;
-                            SectionLabel {
-                                text: "SESSIONS";
-                                vertical-alignment: center;
-                            }
-                            IconButton {
-                                icon: Icons.plus;
-                                tint: Theme.muted;
-                                size: 22px;
-                                icon-size: 13px;
-                                y: (parent.height - self.height) / 2;
-                                clicked => { root.naming-session = true; }
-                            }
-                        }
-                        // Sidebar scrolls the sessions if you make many.
+                        // Folders and sessions scroll together if you make many.
                         Flickable {
                             vertical-stretch: 1;
                             min-height: 32px;
@@ -1313,6 +1426,104 @@ export component AppWindow inherits Window {
                                 width: parent.width;
                                 alignment: start;
                                 spacing: 2px;
+                                HorizontalLayout {
+                                    height: 24px;
+                                    padding-left: 10px;
+                                    padding-right: 4px;
+                                    SectionLabel {
+                                        text: "FOLDERS";
+                                        vertical-alignment: center;
+                                    }
+                                    IconButton {
+                                        icon: Icons.plus;
+                                        tint: Theme.muted;
+                                        size: 22px;
+                                        icon-size: 13px;
+                                        y: (parent.height - self.height) / 2;
+                                        clicked => {
+                                            root.new-folder-takes-selection = false;
+                                            root.naming-folder = true;
+                                        }
+                                    }
+                                }
+                                for f in root.folders: Rectangle {
+                                    height: 32px;
+                                    if root.renaming-folder == f.id: NameField {
+                                        icon: Icons.folder-plain;
+                                        placeholder: "Folder name";
+                                        initial: f.name;
+                                        done(name) => {
+                                            if name != "" { root.folder-action(f.id, "rename:" + name); }
+                                            root.renaming-folder = -1;
+                                            keys.focus();
+                                        }
+                                        cancelled => {
+                                            root.renaming-folder = -1;
+                                            keys.focus();
+                                        }
+                                    }
+                                    if root.renaming-folder != f.id: ContextMenuArea {
+                                        Menu {
+                                            MenuItem {
+                                                title: "Rename";
+                                                activated => { root.renaming-folder = f.id; }
+                                            }
+                                            MenuItem {
+                                                title: "Delete Folder (files stay)";
+                                                activated => { root.folder-action(f.id, "delete"); }
+                                            }
+                                        }
+                                        SidebarItem {
+                                            icon: Icons.folder-plain;
+                                            label: f.name;
+                                            badge: f.count;
+                                            selected: root.view == "folder" && root.view-folder == f.id;
+                                            clicked => { root.show-folder(f.id); }
+                                        }
+                                    }
+                                }
+                                if root.folders.length == 0 && !root.naming-folder: Text {
+                                    height: 26px;
+                                    text: "   Group songs and videos: Relax, Pop…";
+                                    color: Theme.muted;
+                                    font-size: 11.5px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                                // Naming a new folder: Enter makes it, Esc gives up.
+                                if root.naming-folder: NameField {
+                                    icon: Icons.folder-plain;
+                                    placeholder: "Folder name";
+                                    done(name) => {
+                                        if name != "" { root.create-folder(name, root.new-folder-takes-selection); }
+                                        root.naming-folder = false;
+                                        root.new-folder-takes-selection = false;
+                                        keys.focus();
+                                    }
+                                    cancelled => {
+                                        root.naming-folder = false;
+                                        root.new-folder-takes-selection = false;
+                                        keys.focus();
+                                    }
+                                }
+                                Rectangle { height: 8px; }
+                                HorizontalLayout {
+                                    height: 24px;
+                                    padding-left: 10px;
+                                    padding-right: 4px;
+                                    SectionLabel {
+                                        text: "SESSIONS";
+                                        vertical-alignment: center;
+                                    }
+                                    IconButton {
+                                        icon: Icons.plus;
+                                        tint: Theme.muted;
+                                        size: 22px;
+                                        icon-size: 13px;
+                                        y: (parent.height - self.height) / 2;
+                                        clicked => { root.naming-session = true; }
+                                    }
+                                }
                                 for s in root.sessions: Rectangle {
                                     height: 32px;
                                     ContextMenuArea {
@@ -1596,24 +1807,102 @@ export component AppWindow inherits Window {
                                     }
                                     HorizontalLayout {
                                         spacing: 12px;
-                                        Text {
+                                        if !root.select-mode: Text {
                                             text: root.view-subtitle;
                                             color: Theme.muted;
                                             font-size: 13px;
                                             vertical-alignment: center;
                                         }
-                                        if root.view-kind == "songs" && root.lib-songs.length > 0: PrimaryButton {
+                                        if !root.select-mode && root.view-kind == "songs" && root.lib-songs.length > 0: PrimaryButton {
                                             text: "Play";
                                             icon: Icons.play;
                                             height: 32px;
                                             min-width: 88px;
                                             clicked => { root.play-list(false); }
                                         }
-                                        if root.view-kind == "songs" && root.lib-songs.length > 1: GhostButton {
+                                        if !root.select-mode && root.view-kind == "songs" && root.lib-songs.length > 1: GhostButton {
                                             text: "Shuffle";
                                             height: 32px;
                                             min-width: 88px;
                                             clicked => { root.play-list(true); }
+                                        }
+                                        if !root.select-mode && root.view == "folder": GhostButton {
+                                            text: "Add Files…";
+                                            height: 32px;
+                                            compact: true;
+                                            clicked => { root.folder-add-files(false); }
+                                        }
+                                        if !root.select-mode && root.view == "folder": GhostButton {
+                                            text: "Add a Folder…";
+                                            height: 32px;
+                                            compact: true;
+                                            clicked => { root.folder-add-files(true); }
+                                        }
+                                        if !root.select-mode && root.view-kind == "songs" && root.lib-songs.length > 0: GhostButton {
+                                            text: "Select";
+                                            height: 32px;
+                                            compact: true;
+                                            clicked => { root.select-mode = true; }
+                                        }
+                                        // Choosing rows: put them into a folder (or take them out of this one).
+                                        if root.select-mode: GhostButton {
+                                            text: root.selected-count == root.lib-songs.length ? "Clear" : "Select All";
+                                            height: 32px;
+                                            compact: true;
+                                            clicked => { root.select-all(root.selected-count != root.lib-songs.length); }
+                                        }
+                                        if root.select-mode: add-to-btn := PrimaryButton {
+                                            text: root.selected-count > 0 ? "Add " + root.selected-count + " to Folder" : "Add to Folder";
+                                            icon: Icons.folder-plain;
+                                            height: 32px;
+                                            compact: true;
+                                            enabled: root.selected-count > 0;
+                                            clicked => { folder-picker.show(); }
+                                            folder-picker := PopupWindow {
+                                                x: 0;
+                                                y: parent.height + 6px;
+                                                width: 220px;
+                                                Rectangle {
+                                                    border-radius: 12px;
+                                                    background: Theme.sheet;
+                                                    border-width: 1px;
+                                                    border-color: Theme.hairline;
+                                                    drop-shadow-blur: 24px;
+                                                    drop-shadow-offset-y: 8px;
+                                                    drop-shadow-color: #000000.with-alpha(0.35);
+                                                }
+                                                VerticalLayout {
+                                                    padding: 6px;
+                                                    spacing: 2px;
+                                                    for f in root.folders: SidebarItem {
+                                                        icon: Icons.folder-plain;
+                                                        label: f.name;
+                                                        badge: f.count;
+                                                        clicked => { root.add-selected-to-folder(f.id); }
+                                                    }
+                                                    SidebarItem {
+                                                        icon: Icons.plus;
+                                                        label: "New Folder…";
+                                                        clicked => {
+                                                            root.new-folder-takes-selection = true;
+                                                            root.naming-folder = true;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if root.select-mode && root.view == "folder": GhostButton {
+                                            text: "Remove";
+                                            height: 32px;
+                                            compact: true;
+                                            enabled: root.selected-count > 0;
+                                            clicked => { root.remove-selected-from-folder(); }
+                                        }
+                                        if root.select-mode: GhostButton {
+                                            text: "Done";
+                                            height: 32px;
+                                            compact: true;
+                                            clicked => { root.select-all(false); root.select-mode = false; }
                                         }
                                         Rectangle { }
                                     }
@@ -1629,9 +1918,15 @@ export component AppWindow inherits Window {
                                     song: r;
                                     number: i + 1;
                                     wide: root.width > 1040px;
-                                    clicked => { root.play-from-list(i); }
+                                    selecting: root.select-mode;
+                                    folders: root.folders;
+                                    in-folder: root.view == "folder";
+                                    clicked => {
+                                        if root.select-mode { root.toggle-select(i); } else { root.play-from-list(i); }
+                                    }
                                     heart => { root.heart-row(i); }
                                     action(a) => { root.row-action("list", i, a); }
+                                    add-to-folder(id) => { root.add-row-to-folder(i, id); }
                                 }
                             }
                             if root.view-kind == "albums": albums-list := ListView {
@@ -2392,7 +2687,8 @@ export component AppWindow inherits Window {
                 }
                 Rectangle {
                     x: parent.width - self.width - 10px;
-                    y: parent.height - 22px;
+                    // Above the seek line along the bottom.
+                    y: parent.height - 30px;
                     width: 108px;
                     height: 20px;
                     HorizontalLayout {
@@ -2413,13 +2709,13 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                // How far into the track we are, as a thin line along the bottom.
-                if root.has-track: Rectangle {
+                // How far into the track we are, along the bottom: click or drag to seek.
+                if root.has-track: MiniSeek {
                     x: 0;
-                    y: parent.height - 3px;
-                    height: 3px;
-                    width: parent.width * (root.duration > 0 ? Math.clamp(root.position / root.duration, 0, 1) : 0);
-                    background: Theme.accent;
+                    y: parent.height - self.height;
+                    width: parent.width;
+                    value: root.duration > 0 ? root.position / root.duration : 0;
+                    released(v) => { root.seek(v * root.duration); }
                 }
             }
 
@@ -2584,12 +2880,12 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-                if root.mini: Rectangle {
+                if root.mini: MiniSeek {
                     x: 0;
-                    y: parent.height - 3px;
-                    height: 3px;
-                    width: parent.width * (root.duration > 0 ? Math.clamp(root.position / root.duration, 0, 1) : 0);
-                    background: Theme.accent;
+                    y: parent.height - self.height;
+                    width: parent.width;
+                    value: root.duration > 0 ? root.position / root.duration : 0;
+                    released(v) => { root.seek(v * root.duration); }
                 }
 
                 // Up next, on the right.
@@ -3033,6 +3329,29 @@ export component AppWindow inherits Window {
             zoom => { root.maximized = !root.maximized; }
         }
 
+        if root.toast != "" && !root.mini: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 24px;
+            width: Math.min(toast-text.preferred-width + 36px, parent.width - 48px);
+            height: 38px;
+            border-radius: 19px;
+            background: Theme.sheet;
+            border-width: 1px;
+            border-color: Theme.hairline;
+            drop-shadow-blur: 22px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: #000000.with-alpha(0.35);
+            toast-text := Text {
+                width: parent.width - 36px;
+                text: root.toast;
+                color: Theme.fg;
+                font-size: 13px;
+                font-weight: 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
         if root.show-translation && !root.mini: Sheet {
             card-width: 520px;
             dismiss => { root.show-translation = false; }

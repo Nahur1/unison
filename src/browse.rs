@@ -9,7 +9,7 @@ use std::time::Duration;
 use slint::{Image, Model, ModelNotify, ModelRc, ModelTracker, SharedString, TimerMode, VecModel};
 
 use crate::catalog::{self, Album, Filter, Song};
-use crate::{AlbumCell, AlbumRow, ArtistRow, LibRow, Player, fmt_time, with};
+use crate::{AlbumCell, AlbumRow, ArtistRow, FolderItem, LibRow, Player, fmt_time, with};
 
 /// A soft colour picked from a name, for albums and artists without artwork.
 pub fn tint_for(name: &str) -> slint::Color {
@@ -107,10 +107,18 @@ impl Player {
             duration: if s.duration > 0.0 { fmt_time(s.duration).into() } else { SharedString::new() },
             favorite: s.favorite,
             current: self.current_path.as_ref() == Some(&s.path),
+            selected: self.selection.contains(&s.path),
         }
     }
 
     pub fn show_view(&mut self, view: &str) {
+        if view != self.view {
+            self.end_selection();
+        }
+        if view == "folder" {
+            self.show_folder(self.folder_on_screen);
+            return;
+        }
         let ui = self.ui();
         ui.set_view(view.into());
         self.view = view.to_string();
@@ -309,6 +317,230 @@ impl Player {
         }
     }
 
+    // ---------- folders made in Unison ----------
+
+    /// A short message at the bottom of the window, on any page.
+    pub fn toast(&mut self, text: String) {
+        self.ui().set_toast(text.into());
+        self.toast_timer.start(TimerMode::SingleShot, Duration::from_millis(3500), || {
+            with(|p| p.ui().set_toast(SharedString::new()));
+        });
+    }
+
+    /// The folders in the sidebar (and in the Add to Folder menus).
+    pub fn refresh_folders(&mut self) {
+        let folders = self.catalog.folders();
+        let items: Vec<FolderItem> = folders
+            .iter()
+            .map(|f| FolderItem { id: f.id as i32, name: f.name.clone().into(), count: f.count.to_string().into() })
+            .collect();
+        self.ui().set_folders(ModelRc::new(VecModel::from(items)));
+        self.folder_names = folders.into_iter().map(|f| (f.id, f.name)).collect();
+    }
+
+    fn folder_name(&self, id: i64) -> String {
+        self.folder_names.iter().find(|(i, _)| *i == id).map(|(_, n)| n.clone()).unwrap_or_default()
+    }
+
+    pub fn show_folder(&mut self, id: i64) {
+        if self.view != "folder" || self.folder_on_screen != id {
+            self.end_selection();
+        }
+        let name = self.folder_name(id);
+        if name.is_empty() {
+            self.folder_on_screen = -1;
+            self.show_view("songs");
+            return;
+        }
+        self.folder_on_screen = id;
+        let ui = self.ui();
+        ui.set_view("folder".into());
+        ui.set_view_folder(id as i32);
+        self.view = "folder".into();
+        self.show_songs(Filter::Folder(id), &name, None);
+        if self.list.is_empty() {
+            self.ui().set_view_subtitle("Empty · add songs or videos".into());
+        }
+    }
+
+    /// Make a folder; with `take_selection`, the chosen rows go straight into it.
+    pub fn create_folder(&mut self, name: &str, take_selection: bool) {
+        let Some(id) = self.catalog.create_folder(name) else { return };
+        self.refresh_folders();
+        if take_selection && !self.selection.is_empty() {
+            self.add_selected_to_folder(id);
+        } else {
+            self.show_folder(id);
+        }
+    }
+
+    pub fn folder_action(&mut self, id: i64, action: &str) {
+        if action == "delete" {
+            let name = self.folder_name(id);
+            self.catalog.delete_folder(id);
+            self.refresh_folders();
+            self.toast(format!("Deleted the folder “{name}” (the files are still on your computer)"));
+            if self.view == "folder" && self.folder_on_screen == id {
+                self.show_view("songs");
+            }
+        } else if let Some(name) = action.strip_prefix("rename:") {
+            if !self.catalog.rename_folder(id, name) {
+                self.toast(format!("There is already a folder called “{}”", name.trim()));
+                return;
+            }
+            self.refresh_folders();
+            if self.view == "folder" && self.folder_on_screen == id {
+                self.ui().set_view_title(name.trim().into());
+            }
+        }
+    }
+
+    // Choosing rows (Select): they are kept by path, so a list that refreshes
+    // underneath doesn't change what was chosen.
+
+    pub fn toggle_select(&mut self, i: usize) {
+        let Some(path) = self.list.get(i).cloned() else { return };
+        if !self.selection.remove(&path) {
+            self.selection.insert(path);
+        }
+        if let Some(mut row) = self.lib_model.row_data(i) {
+            row.selected = !row.selected;
+            self.lib_model.set_row_data(i, row);
+        }
+        self.ui().set_selected_count(self.selection.len() as i32);
+    }
+
+    pub fn select_all(&mut self, on: bool) {
+        self.selection.clear();
+        if on {
+            self.selection.extend(self.list.iter().cloned());
+        }
+        for i in 0..self.lib_model.row_count() {
+            if let Some(mut row) = self.lib_model.row_data(i) {
+                if row.selected != on {
+                    row.selected = on;
+                    self.lib_model.set_row_data(i, row);
+                }
+            }
+        }
+        self.ui().set_selected_count(self.selection.len() as i32);
+    }
+
+    /// Leave Select, unchecking everything.
+    pub fn end_selection(&mut self) {
+        if self.selection.is_empty() && !self.ui().get_select_mode() {
+            return;
+        }
+        self.select_all(false);
+        self.ui().set_select_mode(false);
+    }
+
+    /// The chosen rows, in list order.
+    fn selected_paths(&self) -> Vec<PathBuf> {
+        self.list.iter().filter(|p| self.selection.contains(*p)).cloned().collect()
+    }
+
+    pub fn add_selected_to_folder(&mut self, id: i64) {
+        let paths = self.selected_paths();
+        self.end_selection();
+        self.add_to_folder(id, paths);
+    }
+
+    pub fn add_row_to_folder(&mut self, i: usize, id: i64) {
+        if let Some(path) = self.list.get(i).cloned() {
+            self.add_to_folder(id, vec![path]);
+        }
+    }
+
+    /// Add files to a folder. Unknown files get their tags read, so this runs
+    /// on a worker thread; the note says how many went in.
+    pub fn add_to_folder(&mut self, id: i64, paths: Vec<PathBuf>) {
+        let paths: Vec<PathBuf> = paths.into_iter().filter(|p| !crate::library::is_link(p)).collect();
+        if paths.is_empty() {
+            return;
+        }
+        let name = self.folder_name(id);
+        let total = paths.len();
+        std::thread::spawn(move || {
+            let added = catalog::add_to_folder(&catalog::db_path(), id, &paths);
+            let _ = slint::invoke_from_event_loop(move || {
+                with(|p| {
+                    p.refresh_folders();
+                    let note = match (added, total) {
+                        (0, 1) => format!("Already in “{name}”"),
+                        (0, _) => format!("All of them are already in “{name}”"),
+                        (1, _) => format!("Added 1 item to “{name}”"),
+                        (n, t) if n < t => format!("Added {n} items to “{name}” ({} were already there)", t - n),
+                        (n, _) => format!("Added {n} items to “{name}”"),
+                    };
+                    p.toast(note);
+                    if p.view == "folder" && p.folder_on_screen == id {
+                        p.show_folder(id);
+                    }
+                });
+            });
+        });
+    }
+
+    pub fn remove_selected_from_folder(&mut self) {
+        if self.view != "folder" {
+            return;
+        }
+        let paths = self.selected_paths();
+        self.end_selection();
+        self.remove_from_folder(paths);
+    }
+
+    pub fn remove_from_folder(&mut self, paths: Vec<PathBuf>) {
+        let id = self.folder_on_screen;
+        if paths.is_empty() || id < 0 {
+            return;
+        }
+        self.catalog.remove_from_folder(id, &paths);
+        self.refresh_folders();
+        self.show_folder(id);
+        let n = paths.len();
+        self.toast(if n == 1 {
+            "Removed from the folder (the file is still on your computer)".into()
+        } else {
+            format!("Removed {n} items from the folder (the files are still on your computer)")
+        });
+    }
+
+    /// Pick files (or a whole folder) on the computer to put into the folder on screen.
+    pub fn folder_add_files(&mut self, whole_folder: bool) {
+        let id = self.folder_on_screen;
+        if id < 0 {
+            return;
+        }
+        let name = self.folder_name(id);
+        let _ = slint::spawn_local(async move {
+            let dialog = rfd::AsyncFileDialog::new();
+            let paths: Vec<PathBuf> = if whole_folder {
+                let Some(dir) = dialog.set_title(format!("Add a folder to “{name}”")).pick_folder().await else { return };
+                crate::library::scan(dir.path(), true)
+            } else {
+                let exts = crate::library::media_extensions();
+                let Some(files) = dialog
+                    .set_title(format!("Add songs or videos to “{name}”"))
+                    .add_filter("Music and videos", &exts)
+                    .pick_files()
+                    .await
+                else {
+                    return;
+                };
+                files.into_iter().map(|f| f.path().to_path_buf()).filter(|p| crate::library::is_playable(p)).collect()
+            };
+            with(|p| {
+                if paths.is_empty() {
+                    p.toast("No music or videos there".into());
+                } else {
+                    p.add_to_folder(id, paths);
+                }
+            });
+        });
+    }
+
     // ---------- library folders ----------
 
     pub fn add_library_folder(&mut self) {
@@ -386,6 +618,7 @@ impl Player {
     }
 
     pub fn init_library(&mut self) {
+        self.refresh_folders();
         self.ui().set_library_empty(self.catalog.is_empty());
         self.refresh_library_folders();
         self.start_scan();

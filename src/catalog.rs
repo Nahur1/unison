@@ -36,6 +36,17 @@ pub enum Filter {
     Favorites,
     Recent,
     Videos,
+    /// A folder the user made in Unison (its id).
+    Folder(i64),
+}
+
+/// A folder the user made inside Unison ("Relax", "Pop"…): a hand-picked set
+/// of songs and videos. Files stay where they are; only the list is stored.
+#[derive(Clone, Debug)]
+pub struct UserFolder {
+    pub id: i64,
+    pub name: String,
+    pub count: usize,
 }
 
 /// The session whose library is everything (the others show only their own folders).
@@ -94,7 +105,18 @@ fn open(path: &Path) -> rusqlite::Result<Connection> {
          );
          CREATE INDEX IF NOT EXISTS tracks_album ON tracks(album);
          CREATE INDEX IF NOT EXISTS tracks_artist ON tracks(artist);
-         CREATE INDEX IF NOT EXISTS tracks_added ON tracks(added_at);",
+         CREATE INDEX IF NOT EXISTS tracks_added ON tracks(added_at);
+         CREATE TABLE IF NOT EXISTS folders (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+             created_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS folder_items (
+             folder INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+             path TEXT NOT NULL,
+             pos INTEGER NOT NULL,
+             PRIMARY KEY (folder, path)
+         );",
     )?;
     Ok(db)
 }
@@ -255,6 +277,7 @@ impl Catalog {
                 format!("SELECT {SONG_COLS} FROM tracks WHERE artist = ?1 AND {sc} ORDER BY album COLLATE NOCASE, track_no, title"),
                 Some(a.clone()),
             ),
+            Filter::Folder(id) => return self.folder_songs(*id),
             Filter::Search(q) => (
                 format!(
                     "SELECT {SONG_COLS} FROM tracks
@@ -274,6 +297,76 @@ impl Catalog {
             out.sort_by(|a, b| library::natural_cmp(&a.path.to_string_lossy(), &b.path.to_string_lossy()));
         }
         out
+    }
+
+    /// A folder's songs and videos in the order they were added. Files the
+    /// index doesn't know (yet) still show, by file name.
+    fn folder_songs(&self, id: i64) -> Vec<Song> {
+        let Ok(mut st) = self.db.prepare(
+            "SELECT fi.path, t.title, t.artist, t.album, t.duration, t.favorite
+             FROM folder_items fi LEFT JOIN tracks t ON t.path = fi.path
+             WHERE fi.folder = ?1 ORDER BY fi.pos",
+        ) else {
+            return Vec::new();
+        };
+        st.query_map([id], |r| {
+            let path = PathBuf::from(r.get::<_, String>(0)?);
+            let title: Option<String> = r.get(1)?;
+            Ok(Song {
+                title: title.filter(|t| !t.is_empty()).unwrap_or_else(|| {
+                    path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+                }),
+                artist: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                album: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                duration: r.get::<_, Option<f64>>(4)?.unwrap_or(0.0),
+                favorite: r.get::<_, Option<i64>>(5)?.unwrap_or(0) != 0,
+                path,
+            })
+        })
+        .map(|r| r.flatten().collect())
+        .unwrap_or_default()
+    }
+
+    pub fn folders(&self) -> Vec<UserFolder> {
+        let Ok(mut st) = self.db.prepare(
+            "SELECT f.id, f.name, COUNT(fi.path) FROM folders f
+             LEFT JOIN folder_items fi ON fi.folder = f.id
+             GROUP BY f.id ORDER BY f.name COLLATE NOCASE",
+        ) else {
+            return Vec::new();
+        };
+        st.query_map([], |r| Ok(UserFolder { id: r.get(0)?, name: r.get(1)?, count: r.get::<_, i64>(2)? as usize }))
+            .map(|r| r.flatten().collect())
+            .unwrap_or_default()
+    }
+
+    /// Make a folder. A name already in use (any letter case) gives its id.
+    pub fn create_folder(&self, name: &str) -> Option<i64> {
+        let name = name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        let _ = self.db.execute("INSERT OR IGNORE INTO folders (name, created_at) VALUES (?1, ?2)", params![name, now()]);
+        self.db.query_row("SELECT id FROM folders WHERE name = ?1", [name], |r| r.get(0)).optional().ok().flatten()
+    }
+
+    pub fn rename_folder(&self, id: i64, name: &str) -> bool {
+        let name = name.trim();
+        !name.is_empty() && self.db.execute("UPDATE folders SET name = ?2 WHERE id = ?1", params![id, name]).unwrap_or(0) == 1
+    }
+
+    /// Delete a folder. Only the list goes; the files are untouched.
+    pub fn delete_folder(&self, id: i64) {
+        let _ = self.db.execute("DELETE FROM folder_items WHERE folder = ?1", [id]);
+        let _ = self.db.execute("DELETE FROM folders WHERE id = ?1", [id]);
+    }
+
+    pub fn remove_from_folder(&self, id: i64, paths: &[PathBuf]) {
+        let Ok(tx) = self.db.unchecked_transaction() else { return };
+        for p in paths {
+            let _ = tx.execute("DELETE FROM folder_items WHERE folder = ?1 AND path = ?2", params![id, p.to_string_lossy()]);
+        }
+        let _ = tx.commit();
     }
 
     pub fn albums(&self) -> Vec<Album> {
@@ -339,6 +432,42 @@ impl Catalog {
             params![path.to_string_lossy(), now()],
         );
     }
+}
+
+/// Put files into a folder, after the ones already there; files it already
+/// holds are skipped. Files the index doesn't know are read and indexed so
+/// they show their real title. Runs on a worker thread with its own
+/// connection (`db` is the catalog file). Returns how many were added.
+pub fn add_to_folder(db: &Path, id: i64, paths: &[PathBuf]) -> usize {
+    let Ok(db) = open(db) else { return 0 };
+    let Ok(tx) = db.unchecked_transaction() else { return 0 };
+    let mut pos: i64 = tx
+        .query_row("SELECT COALESCE(MAX(pos), -1) FROM folder_items WHERE folder = ?1", [id], |r| r.get(0))
+        .unwrap_or(-1);
+    let mut added = 0;
+    for p in paths {
+        let key = p.to_string_lossy();
+        let known: bool =
+            tx.query_row("SELECT 1 FROM tracks WHERE path = ?1", [&key], |_| Ok(true)).optional().ok().flatten().unwrap_or(false);
+        if !known && p.is_file() {
+            let t = crate::meta::read_tags(p);
+            let _ = tx.execute(
+                "INSERT OR IGNORE INTO tracks (path, title, artist, album, track_no, duration, mtime, added_at, is_video)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![key, t.title, t.artist, t.album, t.track_no, t.duration, mtime(p), now(), library::is_video(p) as i64],
+            );
+        }
+        if tx
+            .execute("INSERT OR IGNORE INTO folder_items (folder, path, pos) VALUES (?1, ?2, ?3)", params![id, key, pos + 1])
+            .unwrap_or(0)
+            == 1
+        {
+            pos += 1;
+            added += 1;
+        }
+    }
+    let _ = tx.commit();
+    added
 }
 
 /// Bring the index up to date with the library folders. Runs on a worker
@@ -420,6 +549,36 @@ pub fn scan(on_progress: impl Fn(usize)) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_folders_keep_order_and_survive_unknown_files() {
+        let dir = std::env::temp_dir().join(format!("unison-folders-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("c.db");
+        let cat = Catalog::open_at(&db).unwrap();
+        cat.db
+            .execute(
+                "INSERT INTO tracks (path, title, artist, album, track_no, duration, mtime, added_at) VALUES ('/m/a.mp3', 'Alpha', 'X', 'One', 1, 60, 0, 0)",
+                [],
+            )
+            .unwrap();
+        let relax = cat.create_folder("Relax").unwrap();
+        assert_eq!(cat.create_folder("relax"), Some(relax), "same name, any case, is the same folder");
+        let files = [PathBuf::from("/m/a.mp3"), PathBuf::from("/elsewhere/Night Drive.mp3")];
+        assert_eq!(add_to_folder(&db, relax, &files), 2);
+        assert_eq!(add_to_folder(&db, relax, &files[..1]), 0, "no duplicates");
+        let songs = cat.songs(&Filter::Folder(relax));
+        assert_eq!(songs.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(), ["Alpha", "Night Drive"]);
+        assert_eq!(cat.folders()[0].count, 2);
+        cat.remove_from_folder(relax, &files[..1]);
+        assert_eq!(cat.songs(&Filter::Folder(relax)).len(), 1);
+        assert!(cat.rename_folder(relax, "Calm"));
+        assert_eq!(cat.folders()[0].name, "Calm");
+        cat.delete_folder(relax);
+        assert!(cat.folders().is_empty());
+        assert!(cat.songs(&Filter::Folder(relax)).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn favorites_and_filters() {

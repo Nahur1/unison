@@ -296,6 +296,7 @@ struct Player {
     sheet: Option<(PathBuf, Vec<PathBuf>)>,
     fade: Option<Timer>,
     note_timer: Option<Timer>,
+    toast_timer: Timer,
     /// Moves the scrubber. Runs only while music plays, so a paused Unison sleeps.
     ticker: Timer,
     ticks: u32,
@@ -320,6 +321,11 @@ struct Player {
     album_grid: Option<Rc<browse::AlbumGrid>>,
     artists: Vec<String>,
     filter: Option<catalog::Filter>,
+    /// Rows chosen with Select, by path.
+    selection: std::collections::HashSet<PathBuf>,
+    /// Folders made in Unison: (id, name), and the one on screen.
+    folder_names: Vec<(i64, String)>,
+    folder_on_screen: i64,
     search_timer: Timer,
     rescan_timer: Timer,
     scanning: bool,
@@ -348,6 +354,9 @@ struct Player {
     tray: Option<UnisonTray>,
     /// Closing the window keeps Unison running in the tray (only when a tray exists).
     close_to_tray: bool,
+    /// The window is still resizing for a new mode (mini player / full):
+    /// its size belongs to the old mode and must not be saved for the new one.
+    resizing: bool,
     subs: subtitle_ui::LiveSubs,
     update_timer: Timer,
     update_checking: bool,
@@ -1034,10 +1043,10 @@ impl Player {
     }
 
     /// Sample video at display cadence so its seek bar moves continuously.
-    /// Music keeps the lighter cadence, with faster updates for timed lyrics.
+    /// Music updates five times a second: each step of the progress line is
+    /// then under a pixel, so it glides instead of jumping once a second.
     fn restart_ticker(&mut self) {
-        let fast = self.show_lyrics && self.lyrics.as_ref().is_some_and(|l| l.synced);
-        let every = Duration::from_millis(if self.is_video { 16 } else if fast { 250 } else { 1000 });
+        let every = Duration::from_millis(if self.is_video { 16 } else { 200 });
         if self.ticker.running() && self.ticker.interval() == every {
             return;
         }
@@ -1135,8 +1144,12 @@ impl Player {
             }
         }
         if self.mini {
+            self.resizing = true;
             Timer::single_shot(Duration::from_millis(30), || {
-                with(|p| p.restore_geometry());
+                with(|p| {
+                    p.restore_geometry();
+                    p.resizing = false;
+                });
             });
         }
     }
@@ -1235,24 +1248,34 @@ impl Player {
         #[cfg(target_os = "windows")]
         {
             let (position, size) = self.windowed.take().unwrap_or((w.position(), w.size()));
-            w.set_size(slint::PhysicalSize::new(size.width, size.height + 1));
-            Timer::single_shot(Duration::from_millis(30), move || {
-                with(|p| {
-                    let ui = p.ui();
-                    let w = ui.window();
-                    if !window_fullscreen(w) {
-                        w.set_size(size);
-                        w.set_position(position);
-                        w.request_redraw();
-                        p.render_subs();
-                    }
-                });
-            });
+            self.refit_surface(position, size);
         }
         #[cfg(not(target_os = "windows"))]
         self.windowed.take();
         w.request_redraw();
         self.render_subs();
+    }
+
+    /// On Windows the OpenGL surface can keep an old size after the window is
+    /// resized from code (leaving fullscreen, switching to or from the mini
+    /// player), so the picture is drawn larger than the window and cut off.
+    /// A real one-pixel resize makes it match the window again.
+    #[cfg(target_os = "windows")]
+    fn refit_surface(&self, position: slint::PhysicalPosition, size: slint::PhysicalSize) {
+        let ui = self.ui();
+        ui.window().set_size(slint::PhysicalSize::new(size.width, size.height + 1));
+        Timer::single_shot(Duration::from_millis(30), move || {
+            with(|p| {
+                let ui = p.ui();
+                let w = ui.window();
+                if !window_fullscreen(w) {
+                    w.set_size(size);
+                    w.set_position(position);
+                    w.request_redraw();
+                    p.render_subs();
+                }
+            });
+        });
     }
 
     /// Read subtitle and audio tracks from mpv for the menus.
@@ -1433,6 +1456,7 @@ impl Player {
         match action {
             "next" => self.play_next(path),
             "folder" => show_in_folder(&path),
+            "unfolder" => self.remove_from_folder(vec![path]),
             "trash" => self.ask_delete(path),
             _ => {}
         }
@@ -1603,9 +1627,13 @@ impl Player {
             ui.set_show_open_sheet(false);
         }
         ui.set_mini(mini);
+        self.resizing = true;
         // Let the new size limits apply before resizing.
         Timer::single_shot(Duration::from_millis(30), || {
-            with(|p| p.restore_geometry());
+            with(|p| {
+                p.restore_geometry();
+                p.resizing = false;
+            });
         });
     }
 
@@ -1618,6 +1646,9 @@ impl Player {
     }
 
     fn save_geometry(&self) {
+        if self.resizing {
+            return;
+        }
         let w = self.ui();
         let w = w.window();
         if w.is_minimized() || w.is_maximized() || window_fullscreen(w) {
@@ -1637,13 +1668,31 @@ impl Player {
             .setting(self.geometry_key())
             .map(|s| s.split(',').filter_map(|n| n.parse().ok()).collect())
             .filter(|v: &Vec<i32>| v.len() == 4);
+        // A saved size smaller than the mode allows (an older version could
+        // store the mini player's size as the full window's) would squeeze
+        // the layout together, so it is grown back to the minimum.
+        let scale = w.scale_factor();
+        let (min_w, min_h) = match (self.mini, self.is_video) {
+            (true, true) => (280.0, 158.0),
+            (true, false) => (360.0, 84.0),
+            _ => (820.0, 560.0),
+        };
+        let saved = saved.map(|mut v| {
+            v[2] = v[2].max((min_w * scale) as i32);
+            v[3] = v[3].max((min_h * scale) as i32);
+            if self.mini && !self.is_video {
+                // The music mini player is one row high, never a full window.
+                v[3] = (min_h * scale) as i32;
+                v[2] = v[2].min((720.0 * scale) as i32);
+            }
+            v
+        });
         match saved {
             Some(v) => {
-                w.set_size(slint::PhysicalSize::new(v[2].max(1) as u32, v[3].max(1) as u32));
+                w.set_size(slint::PhysicalSize::new(v[2] as u32, v[3] as u32));
                 w.set_position(slint::PhysicalPosition::new(v[0], v[1]));
             }
             None if self.mini => {
-                let scale = w.scale_factor();
                 let (lw, lh) = if self.is_video { (480.0, 270.0) } else { (440.0, 84.0) };
                 let (mw, mh) = ((lw * scale) as i32, (lh * scale) as i32);
                 w.set_size(slint::PhysicalSize::new(mw as u32, mh as u32));
@@ -1661,6 +1710,18 @@ impl Player {
             None => {
                 w.set_size(slint::LogicalSize::new(1140.0, 730.0));
             }
+        }
+        #[cfg(target_os = "windows")]
+        if self.gl {
+            Timer::single_shot(Duration::from_millis(60), || {
+                with(|p| {
+                    let ui = p.ui();
+                    let w = ui.window();
+                    if !window_fullscreen(w) && !w.is_minimized() {
+                        p.refit_surface(w.position(), w.size());
+                    }
+                });
+            });
         }
     }
 
@@ -1748,6 +1809,9 @@ impl Player {
                 if chosen.is_empty() {
                     return "error: no playable files found".into();
                 }
+                // Something opened from outside gets the full window: a video
+                // must not appear in the small picture-in-picture corner.
+                self.set_mini(false);
                 self.open_files(chosen);
                 self.show_window();
             }
@@ -2154,6 +2218,7 @@ fn run() -> anyhow::Result<()> {
             sheet: None,
             fade: None,
             note_timer: None,
+            toast_timer: Timer::default(),
             ticker: Timer::default(),
             ticks: 0,
             mini: false,
@@ -2171,6 +2236,9 @@ fn run() -> anyhow::Result<()> {
             album_grid: None,
             artists: Vec::new(),
             filter: None,
+            selection: Default::default(),
+            folder_names: Vec::new(),
+            folder_on_screen: -1,
             search_timer: Timer::default(),
             rescan_timer: Timer::default(),
             scanning: false,
@@ -2193,6 +2261,7 @@ fn run() -> anyhow::Result<()> {
             pending_delete: None,
             tray: None,
             close_to_tray: false,
+            resizing: false,
             subs: subtitle_ui::LiveSubs::default(),
             update_timer: Timer::default(),
             update_checking: false,
@@ -2336,6 +2405,15 @@ fn run() -> anyhow::Result<()> {
     ui.on_confirm_delete(|| {
         with(|p| p.confirm_delete());
     });
+    ui.on_show_folder(|id| { with(|p| p.show_folder(id as i64)); });
+    ui.on_create_folder(|name, take| { with(|p| p.create_folder(&name, take)); });
+    ui.on_folder_action(|id, action| { with(|p| p.folder_action(id as i64, &action)); });
+    ui.on_toggle_select(|i| { with(|p| p.toggle_select(i as usize)); });
+    ui.on_select_all(|on| { with(|p| p.select_all(on)); });
+    ui.on_add_selected_to_folder(|id| { with(|p| p.add_selected_to_folder(id as i64)); });
+    ui.on_add_row_to_folder(|i, id| { with(|p| p.add_row_to_folder(i as usize, id as i64)); });
+    ui.on_remove_selected_from_folder(|| { with(|p| p.remove_selected_from_folder()); });
+    ui.on_folder_add_files(|whole| { with(|p| p.folder_add_files(whole)); });
     ui.on_go_back(|| {
         with(|p| p.go_back());
     });

@@ -171,7 +171,7 @@ fn link_thumbnail(path: &Path) -> Option<DynamicImage> {
     let jpg = base.with_extension("jpg");
     if !jpg.exists() {
         std::fs::create_dir_all(&dir).ok()?;
-        let status = std::process::Command::new("yt-dlp")
+        let status = crate::subtitles::hidden(&mut std::process::Command::new("yt-dlp"))
             .args(["--skip-download", "--no-playlist", "--write-thumbnail", "--convert-thumbnails", "jpg", "-q", "-o"])
             .arg(&base)
             .arg(&url)
