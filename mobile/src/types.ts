@@ -22,6 +22,12 @@ export interface Cue {
   end: number;
   text: string;
 }
+/** A folder made in Unison ("Relax", "Pop"…): track ids in the order added. */
+export interface Folder {
+  id: string;
+  name: string;
+  tracks: string[];
+}
 export interface Session {
   id: string;
   name: string;
