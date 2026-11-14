@@ -31,6 +31,8 @@ import {
   Clock3,
   Trash2,
   FolderOpen,
+  Folder as FolderIcon,
+  FolderPlus,
   Sparkles,
   FileText,
   Moon,
@@ -46,6 +48,7 @@ import type {
   Session,
   Bookmark,
   CaptionFile,
+  Folder,
 } from "./types";
 import { defaultSettings, BANDS, PRESETS } from "./types";
 import * as db from "./storage";
@@ -65,6 +68,11 @@ import { parseBlob } from "music-metadata";
 const translator = new OfflineTranslator(),
   equalizer = new Equalizer();
 // crypto.randomUUID needs WebView 92; Android 7-10 phones can be older.
+function sortFolders(items: Folder[]) {
+  return [...items].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+  );
+}
 function newId(): string {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   const b = crypto.getRandomValues(new Uint8Array(16));
@@ -153,6 +161,7 @@ export default function App() {
   const [tracks, setTracks] = useState<Track[]>([]),
     [settings, setSettings] = useState<Settings>(defaultSettings),
     [sessions, setSessions] = useState<Session[]>([]),
+    [folders, setFolders] = useState<Folder[]>([]),
     [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [tab, setTab] = useState("now"),
     [category, setCategory] = useState("songs"),
@@ -177,6 +186,9 @@ export default function App() {
     [loop, setLoop] = useState<[number, number?] | null>(null),
     [note, setNote] = useState(""),
     [sessionName, setSessionName] = useState(""),
+    [folderName, setFolderName] = useState(""),
+    [selecting, setSelecting] = useState(false),
+    [selected, setSelected] = useState<string[]>([]),
     [online, setOnline] = useState(navigator.onLine),
     [loaded, setLoaded] = useState(false);
   const media = useRef<HTMLMediaElement | null>(null),
@@ -198,6 +210,8 @@ export default function App() {
     sourceUrl = useRef(""),
     wantsPlay = useRef(false),
     translationBusy = useRef(false),
+    importInto = useRef(""),
+    foldersRef = useRef<Folder[]>([]),
     scanning = useRef(new Set<string>()),
     chromeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [chrome, setChrome] = useState(true),
@@ -245,6 +259,7 @@ export default function App() {
   tracksRef.current = tracks;
   settingsRef.current = settings;
   queueRef.current = queue;
+  foldersRef.current = folders;
   const toast = useCallback((text: string) => setNotice(text), []);
   useEffect(() => {
     Promise.all([
@@ -254,8 +269,10 @@ export default function App() {
       db.getAll<Bookmark>("bookmarks"),
       db.get<string>("settings", "current"),
       db.get<string[]>("settings", "queue"),
+      db.getAll<Folder>("folders"),
     ])
-      .then(([items, s, p, b, id, q]) => {
+      .then(([items, s, p, b, id, q, f]) => {
+        setFolders(sortFolders(f));
         setTracks(items);
         if (s) setSettings({ ...defaultSettings, ...s });
         setSessions(p);
@@ -623,16 +640,23 @@ export default function App() {
   async function importFiles(files: FileList | File[]) {
     setBusy(true);
     let added = 0;
+    const ids: string[] = [];
     try {
       const next = [...tracksRef.current];
       for (const file of Array.from(files)) {
         if (
           !/\.(mp3|m4a|aac|wav|ogg|opus|flac|mp4|m4v|mov|webm|mkv)$/i.test(
             file.name,
-          ) ||
-          next.some((t) => t.name === file.name && t.size === file.size)
+          )
         )
           continue;
+        const known = next.find(
+          (t) => t.name === file.name && t.size === file.size,
+        );
+        if (known) {
+          ids.push(known.id);
+          continue;
+        }
         let title = file.name.replace(/\.[^.]+$/, ""),
           artist = "Unknown artist",
           album = "Local collection",
@@ -669,6 +693,7 @@ export default function App() {
         };
         await db.put("tracks", track.id, track);
         next.push(track);
+        ids.push(track.id);
         added++;
         setTracks([...next]);
       }
@@ -684,6 +709,14 @@ export default function App() {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = "";
     }
+    const folder = importInto.current;
+    importInto.current = "";
+    if (folder && ids.length) await addToFolder(folder, ids);
+  }
+  /** Pick files on the device straight into a folder. */
+  function addFilesTo(folderId: string) {
+    importInto.current = folderId;
+    void addFiles();
   }
   async function addFiles() {
     if (!native) {
@@ -695,9 +728,14 @@ export default function App() {
       const result = await Native.pickFiles(),
         next = [...tracksRef.current],
         added: Track[] = [];
+      const ids: string[] = [];
       for (const file of result.files) {
-        if (next.some((t) => t.name === file.name && t.size === file.size)) {
+        const known = next.find(
+          (t) => t.name === file.name && t.size === file.size,
+        );
+        if (known) {
           await Native.removeFile({ path: file.path });
+          ids.push(known.id);
           continue;
         }
         const track: Track = {
@@ -723,6 +761,7 @@ export default function App() {
         await db.put("tracks", track.id, track);
         next.push(track);
         added.push(track);
+        ids.push(track.id);
       }
       setTracks(next);
       tracksRef.current = next;
@@ -757,6 +796,9 @@ export default function App() {
             : ""),
       );
       for (const t of added) if (t.kind === "video") void scanEmbedded(t, true);
+      const folder = importInto.current;
+      importInto.current = "";
+      if (folder && ids.length) await addToFolder(folder, ids);
     } catch (e) {
       toast(errorText(e));
     } finally {
@@ -782,6 +824,12 @@ export default function App() {
         await Native.removeFile({ path: track.nativePath });
       await db.remove("tracks", track.id);
       await db.remove("captions", track.id);
+      for (const f of foldersRef.current)
+        if (f.tracks.includes(track.id))
+          await saveFolder({
+            ...f,
+            tracks: f.tracks.filter((id) => id !== track.id),
+          });
       setTracks((ts) => ts.filter((t) => t.id !== track.id));
       setQueue((q) => q.filter((id) => id !== track.id));
       toast("Removed from your Unison library.");
@@ -1044,6 +1092,92 @@ export default function App() {
       toast(errorText(e));
     }
   }
+  // ---------- folders made in Unison ----------
+  async function saveFolder(folder: Folder) {
+    await db.put("folders", folder.id, folder);
+    setFolders((items) =>
+      sortFolders([...items.filter((f) => f.id !== folder.id), folder]),
+    );
+  }
+  /** A new folder, or the one with that name already (any letter case). */
+  async function createFolder(name: string, ids: string[] = []) {
+    const clean = name.trim();
+    if (!clean) return;
+    const same = foldersRef.current.find(
+      (f) => f.name.toLowerCase() === clean.toLowerCase(),
+    );
+    try {
+      if (same) {
+        if (ids.length) await addToFolder(same.id, ids);
+        else toast(`There is already a folder called “${same.name}”`);
+        return same.id;
+      }
+      const folder: Folder = { id: newId(), name: clean, tracks: [] };
+      await saveFolder(folder);
+      foldersRef.current = [...foldersRef.current, folder];
+      if (ids.length) await addToFolder(folder.id, ids);
+      else toast(`Folder “${clean}” created`);
+      return folder.id;
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+  async function addToFolder(folderId: string, ids: string[]) {
+    const folder = foldersRef.current.find((f) => f.id === folderId);
+    if (!folder) return;
+    const fresh = ids.filter(
+      (id, i) => !folder.tracks.includes(id) && ids.indexOf(id) === i,
+    );
+    try {
+      if (fresh.length)
+        await saveFolder({ ...folder, tracks: [...folder.tracks, ...fresh] });
+      toast(
+        !fresh.length
+          ? `Already in “${folder.name}”`
+          : fresh.length < ids.length
+            ? `Added ${fresh.length} to “${folder.name}” (${ids.length - fresh.length} were already there)`
+            : `Added ${fresh.length} to “${folder.name}”`,
+      );
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+  async function removeFromFolder(folderId: string, ids: string[]) {
+    const folder = foldersRef.current.find((f) => f.id === folderId);
+    if (!folder) return;
+    try {
+      await saveFolder({
+        ...folder,
+        tracks: folder.tracks.filter((id) => !ids.includes(id)),
+      });
+      toast(
+        ids.length === 1
+          ? "Removed from the folder (the file stays in your library)"
+          : `Removed ${ids.length} from the folder (the files stay in your library)`,
+      );
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+  async function deleteFolder(folder: Folder) {
+    try {
+      await db.remove("folders", folder.id);
+      setFolders((items) => items.filter((f) => f.id !== folder.id));
+      if (group === folder.id) setGroup("");
+      toast(`Deleted “${folder.name}” (the files stay in your library)`);
+    } catch (e) {
+      toast(errorText(e));
+    }
+  }
+  function endSelection() {
+    setSelecting(false);
+    setSelected([]);
+  }
+  function toggleSelected(id: string) {
+    setSelected((items) =>
+      items.includes(id) ? items.filter((x) => x !== id) : [...items, id],
+    );
+  }
   async function makeSession() {
     if (!sessionName.trim()) return;
     const s: Session = {
@@ -1087,6 +1221,22 @@ export default function App() {
         ),
     [tracks, category, group, query],
   );
+  // A folder made in Unison, when one is open: its tracks in the order added.
+  const openFolder =
+    category === "folders" && group
+      ? folders.find((f) => f.id === group)
+      : undefined;
+  const listed = openFolder
+    ? openFolder.tracks
+        .map((id) => tracks.find((t) => t.id === id))
+        .filter(
+          (t): t is Track =>
+            !!t &&
+            `${t.title} ${t.artist} ${t.album}`
+              .toLowerCase()
+              .includes(query.toLowerCase()),
+        )
+    : filtered;
   const groups = [
     ...new Set(
       filtered.map((t) => (category === "albums" ? t.album : t.artist)),
@@ -1221,7 +1371,7 @@ export default function App() {
             <WifiOff size={16} />
             Made for offline moments
           </span>
-          <small>Unison Player · 0.5.1</small>
+          <small>Unison Player · 0.5.2</small>
         </div>
       </aside>
       <main>
@@ -1481,6 +1631,7 @@ export default function App() {
                 "artists",
                 "videos",
                 "favorites",
+                "folders",
                 "recent",
                 "sessions",
               ].map((item) => (
@@ -1490,6 +1641,7 @@ export default function App() {
                   onClick={() => {
                     setCategory(item);
                     setGroup("");
+                    endSelection();
                   }}
                 >
                   {item[0].toUpperCase() + item.slice(1)}
@@ -1497,12 +1649,78 @@ export default function App() {
               ))}
             </div>
             {group && (
-              <button className="text-button" onClick={() => setGroup("")}>
+              <button
+                className="text-button"
+                onClick={() => {
+                  setGroup("");
+                  endSelection();
+                }}
+              >
                 <ChevronLeft size={16} />
-                {group}
+                {openFolder ? "Folders" : group}
               </button>
             )}
-            {category === "sessions" ? (
+            {category === "folders" && !group ? (
+              <>
+                <div className="inline-form">
+                  <input
+                    aria-label="New folder name"
+                    placeholder="Name a folder: Relax, Pop…"
+                    value={folderName}
+                    onChange={(e) => setFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && folderName.trim()) {
+                        void createFolder(folderName);
+                        setFolderName("");
+                      }
+                    }}
+                  />
+                  <button
+                    className="soft-button"
+                    onClick={() => {
+                      void createFolder(folderName);
+                      setFolderName("");
+                    }}
+                    disabled={!folderName.trim()}
+                  >
+                    <FolderPlus size={18} />
+                    Create
+                  </button>
+                </div>
+                {!folders.length && (
+                  <p className="muted-note">
+                    Make folders for your songs and videos, then add files one
+                    by one or all at once with Select.
+                  </p>
+                )}
+                {folders.map((f) => (
+                  <div className="session-card" key={f.id}>
+                    <button
+                      onClick={() => {
+                        setGroup(f.id);
+                        endSelection();
+                      }}
+                    >
+                      <FolderIcon />
+                      <span>
+                        <strong>{f.name}</strong>
+                        <small>
+                          {f.tracks.length === 1
+                            ? "1 file"
+                            : `${f.tracks.length} files`}
+                        </small>
+                      </span>
+                      <ChevronLeft size={20} className="flip" />
+                    </button>
+                    <IconButton
+                      icon={Trash2}
+                      label={`Delete folder ${f.name}`}
+                      onClick={() => void deleteFolder(f)}
+                    />
+                  </div>
+                ))}
+              </>
+            ) : category === "sessions" ? (
               <>
                 <div className="inline-form">
                   <input
@@ -1586,43 +1804,131 @@ export default function App() {
               </div>
             ) : (
               <>
-                <div className="list-summary">
-                  <span>
-                    {filtered.length}{" "}
-                    {category === "videos" ? "videos" : "tracks"}
-                  </span>
-                  {!!filtered.length && (
+                {openFolder && (
+                  <div className="folder-heading">
+                    <h2>{openFolder.name}</h2>
+                    <button
+                      className="soft-button"
+                      onClick={() => addFilesTo(openFolder.id)}
+                      disabled={busy}
+                    >
+                      <Plus size={18} />
+                      Add files
+                    </button>
+                  </div>
+                )}
+                {selecting ? (
+                  <div className="select-bar" role="toolbar">
                     <button
                       className="text-button"
-                      onClick={() => {
-                        void choose(
-                          filtered[0],
-                          filtered.map((t) => t.id),
-                        );
-                        setTab("now");
-                      }}
+                      onClick={() =>
+                        setSelected(
+                          selected.length === listed.length
+                            ? []
+                            : listed.map((t) => t.id),
+                        )
+                      }
                     >
-                      <Play size={15} />
-                      Play all
+                      {selected.length === listed.length
+                        ? "Clear"
+                        : "Select all"}
                     </button>
-                  )}
-                </div>
-                <div className="track-list">
-                  {filtered.map((track) => (
-                    <div
-                      className={`track-row ${track.id === currentId ? "current" : ""}`}
-                      key={track.id}
+                    <button
+                      className="soft-button"
+                      disabled={!selected.length}
+                      onClick={() => setSheet("folders")}
                     >
+                      <FolderPlus size={17} />
+                      Add {selected.length || ""} to folder
+                    </button>
+                    {openFolder && (
                       <button
-                        className="track-main"
+                        className="text-button"
+                        disabled={!selected.length}
+                        onClick={() => {
+                          void removeFromFolder(openFolder.id, selected);
+                          endSelection();
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <button className="text-button" onClick={endSelection}>
+                      Done
+                    </button>
+                  </div>
+                ) : (
+                  <div className="list-summary">
+                    <span>
+                      {listed.length}{" "}
+                      {category === "videos"
+                        ? "videos"
+                        : openFolder
+                          ? "files"
+                          : "tracks"}
+                    </span>
+                    {!!listed.length && (
+                      <button
+                        className="text-button"
+                        onClick={() => setSelecting(true)}
+                      >
+                        <Check size={15} />
+                        Select
+                      </button>
+                    )}
+                    {!!listed.length && (
+                      <button
+                        className="text-button"
                         onClick={() => {
                           void choose(
-                            track,
-                            filtered.map((t) => t.id),
+                            listed[0],
+                            listed.map((t) => t.id),
                           );
                           setTab("now");
                         }}
                       >
+                        <Play size={15} />
+                        Play all
+                      </button>
+                    )}
+                  </div>
+                )}
+                {openFolder && !listed.length && (
+                  <p className="muted-note">
+                    Empty. Tap Add files, or use Select in Songs or Videos.
+                  </p>
+                )}
+                <div className="track-list">
+                  {listed.map((track) => (
+                    <div
+                      className={`track-row ${track.id === currentId ? "current" : ""} ${selected.includes(track.id) ? "selected" : ""}`}
+                      key={track.id}
+                    >
+                      <button
+                        className="track-main"
+                        aria-pressed={
+                          selecting ? selected.includes(track.id) : undefined
+                        }
+                        onClick={() => {
+                          if (selecting) {
+                            toggleSelected(track.id);
+                            return;
+                          }
+                          void choose(
+                            track,
+                            listed.map((t) => t.id),
+                          );
+                          setTab("now");
+                        }}
+                      >
+                        {selecting && (
+                          <span
+                            className={`check-box ${selected.includes(track.id) ? "on" : ""}`}
+                            aria-hidden="true"
+                          >
+                            {selected.includes(track.id) && <Check size={15} />}
+                          </span>
+                        )}
                         <Art track={track} />
                         <span>
                           <strong>{track.title}</strong>
@@ -1644,11 +1950,21 @@ export default function App() {
                         active={track.favorite}
                         onClick={() => void favorite(track)}
                       />
-                      <IconButton
-                        icon={Trash2}
-                        label={`Remove ${track.title}`}
-                        onClick={() => setSheet(`delete:${track.id}`)}
-                      />
+                      {openFolder ? (
+                        <IconButton
+                          icon={X}
+                          label={`Remove ${track.title} from ${openFolder.name}`}
+                          onClick={() =>
+                            void removeFromFolder(openFolder.id, [track.id])
+                          }
+                        />
+                      ) : (
+                        <IconButton
+                          icon={Trash2}
+                          label={`Remove ${track.title}`}
+                          onClick={() => setSheet(`delete:${track.id}`)}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2007,7 +2323,7 @@ export default function App() {
             <div className="about-card">
               <Brand />
               <p>Music, films, and a world of understanding.</p>
-              <small>Version 0.5.1 · Mobile preview</small>
+              <small>Version 0.5.2 · Mobile preview</small>
               <button
                 className="text-button"
                 onClick={() => {
@@ -2113,9 +2429,11 @@ export default function App() {
                     ? "Sleep timer"
                     : sheet.startsWith("delete:")
                       ? "Remove from library?"
-                      : sheet === "legal"
-                        ? "Licenses & notices"
-                        : "Playback tools"}
+                      : sheet === "folders"
+                        ? `Add ${selected.length} to a folder`
+                        : sheet === "legal"
+                          ? "Licenses & notices"
+                          : "Playback tools"}
               </h2>
               <IconButton
                 icon={X}
@@ -2123,6 +2441,50 @@ export default function App() {
                 onClick={() => setSheet("")}
               />
             </div>
+            {sheet === "folders" && (
+              <>
+                {folders.map((f) => (
+                  <button
+                    className="queue-row"
+                    key={f.id}
+                    onClick={() => {
+                      void addToFolder(f.id, selected);
+                      setSheet("");
+                      endSelection();
+                    }}
+                  >
+                    <span className="folder-symbol">
+                      <FolderIcon size={20} />
+                    </span>
+                    <span>
+                      <strong>{f.name}</strong>
+                      <small>{f.tracks.length} files</small>
+                    </span>
+                  </button>
+                ))}
+                <div className="inline-form">
+                  <input
+                    aria-label="New folder name"
+                    placeholder="New folder…"
+                    value={folderName}
+                    onChange={(e) => setFolderName(e.target.value)}
+                  />
+                  <button
+                    className="soft-button"
+                    disabled={!folderName.trim()}
+                    onClick={() => {
+                      void createFolder(folderName, selected);
+                      setFolderName("");
+                      setSheet("");
+                      endSelection();
+                    }}
+                  >
+                    <FolderPlus size={18} />
+                    Create
+                  </button>
+                </div>
+              </>
+            )}
             {sheet === "legal" && (
               <pre className="legal-copy">
                 {legalText || "Loading bundled notices…"}

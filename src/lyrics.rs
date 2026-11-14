@@ -142,7 +142,8 @@ fn online_lookup(title: &str, artist: &str, album: &str, duration: f64) -> Optio
     if duration > 0.0 {
         url.push_str(&format!("&duration={}", duration.round() as u64));
     }
-    let out = std::process::Command::new("curl")
+    // Hidden: on Windows a console would flash up at every new song.
+    let out = crate::subtitles::hidden(&mut std::process::Command::new("curl"))
         .args(["-s", "--max-time", "8", "-H", "User-Agent: Unison (https://github.com/)", &url])
         .output()
         .ok()?;

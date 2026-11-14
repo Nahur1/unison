@@ -1685,3 +1685,83 @@ input[type="range"]::-moz-range-thumb {
     margin-right: 8px;
   }
 }
+/* Folders made in Unison, and choosing tracks with Select. */
+.list-summary {
+  gap: 12px;
+}
+.list-summary > span {
+  margin-right: auto;
+}
+.select-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: var(--bg-86);
+  border: 1px solid var(--line);
+}
+.select-bar .soft-button {
+  margin-right: auto;
+}
+.select-bar button:disabled {
+  opacity: 0.45;
+}
+.track-main > .check-box,
+.check-box {
+  flex: 0 0 22px;
+  min-width: 0;
+  max-width: 22px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 10px;
+  border-radius: 7px;
+  border: 1.5px solid var(--muted);
+  color: var(--bg);
+}
+.check-box.on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.track-row.selected {
+  background: rgba(182, 196, 230, 0.12);
+}
+.folder-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 2px;
+}
+.folder-heading h2 {
+  margin: 0;
+  font-size: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.muted-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 12px 4px;
+}
+.flip {
+  transform: scaleX(-1);
+}
+.folder-symbol {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--faint, rgba(255, 255, 255, 0.06));
+  color: var(--accent);
+}

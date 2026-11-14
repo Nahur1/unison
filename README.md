@@ -84,6 +84,12 @@ ten minutes.
 - Colours follow the artwork, or pick a fixed theme in Settings
 - Right-click a song for **Play Next**, **Show in Folder** and **Move to Trash**
 
+**Folders:** make your own folders for songs and videos ("Relax", "Pop"…) with +
+next to Folders in the sidebar. Add songs one by one (right-click › Add to
+Folder) or many at once with **Select** › **Select All** › **Add to Folder**; in a
+folder, **Add Files…** picks music or videos from your computer. The files stay
+where they are.
+
 **Sessions:** Main, Code and Relax are always there, and + makes your own. Each
 session keeps its own list, position, volume and library folders.
 

@@ -209,3 +209,39 @@ test("real video renders frames with subtitles and fullscreen controls", async (
     .getByRole("button", { name: "Exit fullscreen", exact: true })
     .click();
 });
+test("folders: select all, add to a new folder, keep it after a reload", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .locator("input[type=file]")
+    .first()
+    .setInputFiles([
+      { name: "Calm River.mp3", mimeType: "audio/mpeg", buffer: tone },
+      { name: "Night Drive.mp3", mimeType: "audio/mpeg", buffer: tone },
+    ]);
+  await expect(page.getByRole("status")).toContainText("2 files added");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Library", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await page.getByRole("button", { name: "Select all" }).click();
+  await page.getByRole("button", { name: "Add 2 to folder" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("New folder name").fill("Relax");
+  await dialog.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("status")).toContainText("Added 2 to “Relax”");
+  await page.reload();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Library", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Folders", exact: true }).click();
+  await page.getByRole("button", { name: /Relax 2 files/ }).click();
+  await expect(page.locator(".track-row")).toHaveCount(2);
+  await page
+    .getByRole("button", { name: /Remove Calm River from Relax/ })
+    .click();
+  await expect(page.locator(".track-row")).toHaveCount(1);
+});

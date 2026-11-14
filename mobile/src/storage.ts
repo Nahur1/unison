@@ -1,6 +1,6 @@
 // Store media as bounded byte chunks: no giant base64 strings or IndexedDB File clones.
 const database = new Promise<IDBDatabase>((resolve, reject) => {
-  const r = indexedDB.open("unison", 2);
+  const r = indexedDB.open("unison", 3);
   r.onupgradeneeded = () => {
     for (const name of [
       "tracks",
@@ -9,6 +9,7 @@ const database = new Promise<IDBDatabase>((resolve, reject) => {
       "bookmarks",
       "captions",
       "media",
+      "folders",
     ])
       if (!r.result.objectStoreNames.contains(name))
         r.result.createObjectStore(name);

@@ -37,6 +37,11 @@ const VIDEO_EXT: &[&str] = &[
     "mp4", "m4v", "mkv", "webm", "avi", "mov", "wmv", "flv", "ts", "m2ts", "mts", "mpg", "mpeg", "3gp", "ogv",
 ];
 
+/// Every file extension Unison plays, for file pickers.
+pub fn media_extensions() -> Vec<&'static str> {
+    AUDIO_EXT.iter().chain(VIDEO_EXT).copied().collect()
+}
+
 fn ext_in(p: &Path, list: &[&str]) -> bool {
     p.extension()
         .and_then(|e| e.to_str())

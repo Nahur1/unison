@@ -105,10 +105,66 @@ begin
   end;
 end;
 
+
+{ Unison takes over from Kaghaz Player: close it and uninstall it silently. }
+procedure RemoveKaghaz;
+var
+  Uninstaller: String;
+  Code: Integer;
+begin
+  if not KaghazUninstaller(Uninstaller) then exit;
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM kaghaz.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+{ "Unison 0.5.1", for the messages. }
+function PreviousLabel: String;
+var
+  Version: String;
+begin
+  if not RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', Version) then
+    RegQueryStringValue(HKLM, UninstallKey, 'DisplayVersion', Version);
+  Result := 'Unison';
+  if Version <> '' then Result := Result + ' ' + Version;
+end;
+
+{ A copy installed into a source checkout (a folder with .git) is never
+  uninstalled automatically: its uninstaller would also remove project files
+  that the installer overwrote. }
+function InSourceCheckout(Dir: String): Boolean;
+begin
+  Result := DirExists(AddBackslash(Dir) + '.git');
+end;
+
+{ Every new version first uninstalls the previous one (also from the same
+  folder), so nothing of an old version stays on the computer. Settings,
+  library and sessions live in the user's profile and are kept. }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Dir, Uninstaller, Name: String;
+  Code: Integer;
+begin
+  if CurStep <> ssInstall then exit;
+  RemoveKaghaz;
+  if not PreviousInstall(Dir, Uninstaller) then exit;
+  if InSourceCheckout(RemoveBackslashUnlessRoot(Dir)) then exit;
+  Uninstaller := RemoveQuotes(Uninstaller);
+  if not FileExists(Uninstaller) then exit;
+  Name := PreviousLabel;
+  WizardForm.StatusLabel.Caption := 'Removing the previous version (' + Name + ')...';
+  WizardForm.FilenameLabel.Caption := Dir;
+  WizardForm.Refresh;
+  Log('Uninstalling ' + Name + ' from ' + Dir + ' before installing the new version');
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM unison.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  if not Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    Log('The previous version''s uninstaller did not finish cleanly (code ' + IntToStr(Code) + '); installing over it');
+  WizardForm.StatusLabel.Caption := 'Installing Unison Player {#AppVersion}...';
+end;
+
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
-  Uninstaller: String;
+  Dir, Uninstaller: String;
 begin
   Result := MemoDirInfo;
   if MemoTasksInfo <> '' then
@@ -122,34 +178,13 @@ begin
     Result := Result + 'Kaghaz Player:' + NewLine + Space +
       'Unison replaces it. Kaghaz Player will be closed and uninstalled.';
   end;
-end;
-
-{ Unison takes over from Kaghaz Player: close it and uninstall it silently. }
-procedure RemoveKaghaz;
-var
-  Uninstaller: String;
-  Code: Integer;
-begin
-  if not KaghazUninstaller(Uninstaller) then exit;
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM kaghaz.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
-  Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, Code);
-end;
-
-{ Only one Unison on the computer: if the new version goes to another folder,
-  the old copy is uninstalled first (settings and library are kept). }
-procedure CurStepChanged(CurStep: TSetupStep);
-var
-  Dir, Uninstaller: String;
-  Code: Integer;
-begin
-  if CurStep <> ssInstall then exit;
-  RemoveKaghaz;
-  if not PreviousInstall(Dir, Uninstaller) then exit;
-  if CompareText(RemoveBackslashUnlessRoot(Dir), RemoveBackslashUnlessRoot(ExpandConstant('{app}'))) = 0 then exit;
-  Uninstaller := RemoveQuotes(Uninstaller);
-  if not FileExists(Uninstaller) then exit;
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM unison.exe', '', SW_HIDE, ewWaitUntilTerminated, Code);
-  Exec(Uninstaller, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  if PreviousInstall(Dir, Uninstaller) and not InSourceCheckout(RemoveBackslashUnlessRoot(Dir)) then
+  begin
+    if Result <> '' then Result := Result + NewLine + NewLine;
+    Result := Result + 'Previous version:' + NewLine + Space +
+      PreviousLabel + ' will be closed and uninstalled first, so nothing of it is left behind.' +
+      NewLine + Space + 'Your settings, library and sessions are kept.';
+  end;
 end;
 
 procedure EnvKey(var Root: Integer; var Key: string);
