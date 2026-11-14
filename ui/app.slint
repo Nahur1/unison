@@ -821,6 +821,8 @@ export component AppWindow inherits Window {
     in property <float> duration;
     in property <bool> playing;
     in property <float> volume: 80;
+    // Above 100 % boosts quiet videos.
+    out property <float> volume-max: 150;
     in property <bool> muted;
     in property <bool> shuffle;
     in property <int> repeat-mode; // 0 off, 1 all, 2 one
@@ -874,6 +876,7 @@ export component AppWindow inherits Window {
     in-out property <float> eq-box-ratio: 0.33;
     callback eq-box-resized();
     in-out property <bool> pause-on-lock: true;
+    in-out property <bool> even-out-videos: true;
 
     // Sleep timer, speed, A-B loop, bookmarks
     in property <string> sleep-label;
@@ -967,6 +970,7 @@ export component AppWindow inherits Window {
     callback eq-save(string);
     callback eq-delete(int);
     callback pause-on-lock-changed(bool);
+    callback even-out-videos-changed(bool);
     callback show-view(string);
     callback search-changed(string);
     callback play-from-list(int);
@@ -1095,7 +1099,7 @@ export component AppWindow inherits Window {
                 if root.video-mode && e.text == "." { root.frame-step(true); return accept; }
                 if root.video-mode && e.text == "," { root.frame-step(false); return accept; }
                 if root.video-mode && (e.text == "t" || e.text == "T") { root.subs-cycle-mode(); return accept; }
-                if e.text == Key.UpArrow { root.set-volume(Math.min(root.volume + 5, 100)); return accept; }
+                if e.text == Key.UpArrow { root.set-volume(Math.min(root.volume + 5, root.volume-max)); return accept; }
                 if e.text == Key.DownArrow { root.set-volume(Math.max(root.volume - 5, 0)); return accept; }
                 if e.text == "m" || e.text == "M" { root.toggle-mute(); return accept; }
                 if e.text == "n" || e.text == "N" { root.next(); return accept; }
@@ -2074,9 +2078,9 @@ export component AppWindow inherits Window {
                                         width: Math.max(60px, Math.min(180px, now.width - 290px));
                                         y: (parent.height - self.height) / 2;
                                         rest-thickness: 4px;
-                                        value: root.volume / 100;
-                                        moved(v) => { root.set-volume(v * 100); }
-                                        released(v) => { root.set-volume(v * 100); }
+                                        value: root.volume / root.volume-max;
+                                        moved(v) => { root.set-volume(v * root.volume-max); }
+                                        released(v) => { root.set-volume(v * root.volume-max); }
                                     }
                                     Icon {
                                         icon: Icons.volume-high;
@@ -2350,9 +2354,9 @@ export component AppWindow inherits Window {
                         }
                         NSlider {
                             rest-thickness: 3px;
-                            value: root.volume / 100;
-                            moved(v) => { root.set-volume(v * 100); }
-                            released(v) => { root.set-volume(v * 100); }
+                            value: root.volume / root.volume-max;
+                            moved(v) => { root.set-volume(v * root.volume-max); }
+                            released(v) => { root.set-volume(v * root.volume-max); }
                         }
                     }
                 }
@@ -2521,9 +2525,9 @@ export component AppWindow inherits Window {
                             rest-thickness: 3px;
                             fill-color: #ffffff;
                             track-color: #ffffff.with-alpha(0.22);
-                            value: root.volume / 100;
-                            moved(v) => { root.set-volume(v * 100); }
-                            released(v) => { root.set-volume(v * 100); }
+                            value: root.volume / root.volume-max;
+                            moved(v) => { root.set-volume(v * root.volume-max); }
+                            released(v) => { root.set-volume(v * root.volume-max); }
                         }
                     }
                 }
@@ -2797,9 +2801,9 @@ export component AppWindow inherits Window {
                                     rest-thickness: 4px;
                                     fill-color: #ffffff;
                                     track-color: #ffffff.with-alpha(0.22);
-                                    value: root.volume / 100;
-                                    moved(v) => { root.set-volume(v * 100); }
-                                    released(v) => { root.set-volume(v * 100); }
+                                    value: root.volume / root.volume-max;
+                                    moved(v) => { root.set-volume(v * root.volume-max); }
+                                    released(v) => { root.set-volume(v * root.volume-max); }
                                 }
                             }
                             Rectangle { }
@@ -3820,6 +3824,15 @@ export component AppWindow inherits Window {
                     on <=> root.pause-on-lock;
                     y: (parent.height - self.height) / 2;
                     toggled(v) => { root.pause-on-lock-changed(v); }
+                }
+            }
+            SettingRow {
+                label: "Even out quiet videos";
+                hint: "Brings up soft dialogue in films and clips.";
+                Switch {
+                    on <=> root.even-out-videos;
+                    y: (parent.height - self.height) / 2;
+                    toggled(v) => { root.even-out-videos-changed(v); }
                 }
             }
             // Library folders: removing one only takes it out of Unison.

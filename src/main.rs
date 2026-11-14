@@ -326,6 +326,8 @@ struct Player {
 
     eq: eq::Eq,
     pause_on_lock: bool,
+    /// Level out soft dialogue and quiet mixes in videos.
+    even_out_videos: bool,
     paused_by_lock: bool,
 
     // Sleep timer, speed, A-B loop, bookmarks (see tools.rs)
@@ -377,6 +379,14 @@ pub fn request_redraw() {
             ui.window().request_redraw();
         }
     });
+}
+
+/// The slider goes past 100 % so quiet films can be turned up.
+pub const VOLUME_MAX: f64 = 150.0;
+
+/// Slider value → mpv `volume`, so the amplitude is (v/100)² instead of mpv's (v/100)³.
+pub fn mpv_volume(v: f64) -> f64 {
+    100.0 * (v.max(0.0) / 100.0).powf(2.0 / 3.0)
 }
 
 thread_local! {
@@ -474,12 +484,14 @@ impl Player {
         // Keep pointing at the same file even if earlier ones went missing.
         let index = current.as_ref().and_then(|c| queue.iter().position(|p| p == c));
         let position = if index.is_some() { s.position } else { 0.0 };
-        self.volume = s.volume;
+        // One volume for the whole app: switching sessions must not suddenly
+        // drop it. Older installs only had the per-session value.
+        self.volume = self.store.setting("volume").and_then(|v| v.parse().ok()).unwrap_or(s.volume).clamp(0.0, VOLUME_MAX);
         if self.volume > 0.0 { self.last_audible_volume = self.volume; }
         self.shuffle = s.shuffle;
         self.repeat = s.repeat;
         self.unshuffled = None;
-        self.mpv.set_double("volume", self.volume);
+        self.send_volume(self.volume);
         self.mpv.set_flag("mute", self.muted);
         self.set_queue(queue, index.unwrap_or(0));
         let ui = self.ui();
@@ -871,13 +883,14 @@ impl Player {
 
     fn set_volume(&mut self, v: f64) {
         self.cancel_fade();
-        self.volume = v.clamp(0.0, 100.0);
+        self.volume = v.clamp(0.0, VOLUME_MAX);
+        self.store.set_setting("volume", &format!("{:.1}", self.volume));
         if self.volume > 0.0 {
             self.last_audible_volume = self.volume;
             self.muted = false;
             self.store.set_setting("muted", "0");
         }
-        self.mpv.set_double("volume", self.volume);
+        self.send_volume(self.volume);
         self.mpv.set_flag("mute", self.muted);
         self.ui().set_volume(self.volume as f32);
         self.ui().set_muted(self.muted);
@@ -889,7 +902,7 @@ impl Player {
             self.muted = false;
             if self.volume <= 0.0 {
                 self.volume = self.last_audible_volume;
-                self.mpv.set_double("volume", self.volume);
+                self.send_volume(self.volume);
                 self.ui().set_volume(self.volume as f32);
             }
         } else {
@@ -1064,8 +1077,15 @@ impl Player {
         }
     }
 
+    /// Hand a slider volume (0–150) to mpv. mpv cubes its volume, so 50 on
+    /// its scale is already -18 dB; this makes the slider follow loudness
+    /// more evenly (50 % ≈ -12 dB, 100 % = full, above 100 % boosts).
+    fn send_volume(&self, v: f64) {
+        self.mpv.set_double("volume", mpv_volume(v));
+    }
+
     fn fade_in(&mut self, target: f64) {
-        self.mpv.set_double("volume", 0.0);
+        self.send_volume(0.0);
         let timer = Timer::default();
         let start = std::time::Instant::now();
         timer.start(TimerMode::Repeated, Duration::from_millis(40), move || {
@@ -1073,7 +1093,7 @@ impl Player {
             // Ease out, so the music arrives softly.
             let v = target * (1.0 - (1.0 - k).powi(3));
             with(|p| {
-                p.mpv.set_double("volume", v);
+                p.send_volume(v);
                 if k >= 1.0 {
                     p.fade = None;
                 }
@@ -1084,7 +1104,7 @@ impl Player {
 
     fn cancel_fade(&mut self) {
         if self.fade.take().is_some() {
-            self.mpv.set_double("volume", self.volume);
+            self.send_volume(self.volume);
         }
     }
 
@@ -1120,6 +1140,8 @@ impl Player {
             self.save_geometry();
         }
         self.is_video = video;
+        // Videos get the loudness leveller, music doesn't.
+        self.apply_eq();
         let ui = self.ui();
         ui.set_video_mode(video);
         // A new video opens full size; music brings the normal view back.
@@ -1313,6 +1335,8 @@ impl Player {
         ui.set_show_lyrics(self.show_lyrics);
         ui.set_online_lyrics(self.online_lyrics);
         ui.set_pause_on_lock(self.pause_on_lock);
+        self.even_out_videos = self.store.setting("even_out_videos").as_deref() != Some("0");
+        ui.set_even_out_videos(self.even_out_videos);
     }
 
     fn request_lyrics(&mut self) {
@@ -2148,6 +2172,7 @@ fn run() -> anyhow::Result<()> {
             scanning: false,
             eq: eq::Eq::default(),
             pause_on_lock: true,
+            even_out_videos: true,
             paused_by_lock: false,
             art_palette: None,
             color_theme: 0,
@@ -2342,6 +2367,13 @@ fn run() -> anyhow::Result<()> {
         with(|p| {
             p.pause_on_lock = on;
             p.store.set_setting("pause_on_lock", if on { "1" } else { "0" });
+        });
+    });
+    ui.on_even_out_videos_changed(|on| {
+        with(|p| {
+            p.even_out_videos = on;
+            p.store.set_setting("even_out_videos", if on { "1" } else { "0" });
+            p.apply_eq();
         });
     });
     ui.on_set_sleep(|arg| {

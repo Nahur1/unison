@@ -89,14 +89,14 @@ impl Player {
         self.sleep_timer.start(TimerMode::Repeated, Duration::from_millis(200), move || {
             with(|p| {
                 let k = (start.elapsed().as_secs_f64() / FADE).min(1.0);
-                p.mpv.set_double("volume", from * (1.0 - k));
+                p.send_volume(from * (1.0 - k));
                 if k >= 1.0 {
                     p.sleep_timer.stop();
                     if p.playing {
                         p.play_pause();
                     }
                     // Back to the normal volume for next time.
-                    p.mpv.set_double("volume", p.volume);
+                    p.send_volume(p.volume);
                     p.set_sleep("off");
                     p.save();
                 }

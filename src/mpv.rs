@@ -165,7 +165,7 @@ impl Mpv {
             ("ytdl-format", "bv*[height<=?1080][vcodec^=avc1]+ba/b[height<=?1080]/bv*+ba/b"),
             ("load-scripts", "no"),
             ("audio-client-name", "Unison"),
-            ("volume-max", "100"),
+            ("volume-max", "200"),
             ("gapless-audio", "weak"),
         ] {
             mpv.set_option(k, v)?;
