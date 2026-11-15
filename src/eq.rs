@@ -239,16 +239,22 @@ impl Player {
         self.draw_eq_curve();
 
         let flat = g.iter().all(|x| x.abs() < 0.05) && self.eq.preamp.abs() < 0.05;
-        if !self.eq.on || flat {
-            self.mpv.set_string("af", "");
-        } else {
+        let mut chain: Vec<String> = Vec::new();
+        if self.is_video && self.even_out_videos {
+            // Films are mixed far quieter than music; lift soft passages
+            // (up to +18 dB) without letting loud ones clip.
+            chain.push("dynaudnorm=f=250:g=15:p=0.9:m=8".into());
+        }
+        if self.eq.on && !flat {
             let entries: Vec<String> = BANDS.iter().zip(g).map(|(f, v)| format!("entry({f},{v})")).collect();
             // Turn the signal down by the biggest boost so loud songs don't clip.
             let headroom = g.iter().cloned().fold(0.0f32, f32::max);
             let level = self.eq.preamp - headroom;
-            let graph = format!("lavfi=[firequalizer=gain_entry='{}',volume={level}dB]", entries.join(";"));
-            self.mpv.set_string("af", &graph);
+            chain.push(format!("firequalizer=gain_entry='{}'", entries.join(";")));
+            chain.push(format!("volume={level}dB"));
         }
+        let graph = if chain.is_empty() { String::new() } else { format!("lavfi=[{}]", chain.join(",")) };
+        self.mpv.set_string("af", &graph);
         self.store.set_setting("eq", &self.eq.encode());
     }
 
