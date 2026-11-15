@@ -1371,7 +1371,7 @@ export default function App() {
             <WifiOff size={16} />
             Made for offline moments
           </span>
-          <small>Unison Player · 0.5.2</small>
+          <small>Unison Player · 0.5.3</small>
         </div>
       </aside>
       <main>
@@ -2323,7 +2323,7 @@ export default function App() {
             <div className="about-card">
               <Brand />
               <p>Music, films, and a world of understanding.</p>
-              <small>Version 0.5.2 · Mobile preview</small>
+              <small>Version 0.5.3 · Mobile preview</small>
               <button
                 className="text-button"
                 onClick={() => {
